@@ -96,12 +96,12 @@ class MainActivity : AppCompatActivity() {
 
     private fun getIncomingData(): TicketData? {
         val ticketData = TicketData()
-        if(intent.getStringExtra(TicketData.COMPANY_NAME_EXTRA) != null){
-            ticketData.companyName = intent.getStringExtra(TicketData.COMPANY_NAME_EXTRA)
-        }else {
-            toast("COMPANY_NAME_EXTRA null")
-            return null
-        }
+//        if(intent.getStringExtra(TicketData.COMPANY_NAME_EXTRA) != null){
+//            ticketData.companyName = intent.getStringExtra(TicketData.COMPANY_NAME_EXTRA)
+//        }else {
+//            toast("COMPANY_NAME_EXTRA null")
+//            return null
+//        }
         if(intent.getStringExtra(TicketData.COMPANY_CODE) != null){
             ticketData.companyCode = intent.getStringExtra(TicketData.COMPANY_CODE)
         }else {
