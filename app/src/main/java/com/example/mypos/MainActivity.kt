@@ -5,6 +5,7 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import androidx.appcompat.app.AppCompatActivity
 import android.os.Bundle
+import android.os.Handler
 import java.text.SimpleDateFormat
 import java.util.*
 import android.text.TextUtils
@@ -18,17 +19,20 @@ import com.mypos.slavesdk.*
 import kotlinx.android.synthetic.main.activity_main.*
 import org.jetbrains.anko.sdk27.coroutines.onClick
 import org.jetbrains.anko.toast
+import kotlin.collections.ArrayList
 
 
 class MainActivity : AppCompatActivity() {
 
-    var data : TicketData? = null
+    var dataList = mutableListOf<String>()
+    var dataListChuncked: List<List<String>>? = null
     val MY_PERMISSIONS_REQUEST_LOCATION = 99
+    var isCardPayment = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
-        if(!checkCoarsePermission()){
+        if (!checkCoarsePermission()) {
             btnTryAgain.visibility = View.INVISIBLE
             progressBar1.visibility = View.INVISIBLE
             btnPerrmision.setOnClickListener {
@@ -38,25 +42,41 @@ class MainActivity : AppCompatActivity() {
                     MY_PERMISSIONS_REQUEST_LOCATION
                 )
             }
-        }else{
+        } else {
             btnPerrmision.visibility = View.INVISIBLE
         }
-        data = getIncomingData()
+        getIncomingData()
         reprintprint()
         btnTryAgain.setOnClickListener {
+            testUri()
             reprintprint()
         }
 
-        POSHandler.getInstance().setPOSInfoListener(object : POSInfoListener{
+        btnConnect.setOnClickListener {
+            POSHandler.getInstance().connectDevice(this@MainActivity)
+        }
+
+        POSHandler.getInstance().setPOSInfoListener(object : POSInfoListener {
             override fun onTransactionComplete(transactionData: TransactionData?) {
-                Log.e("posInfo", transactionData.toString())
+                if(transactionData != null ){
+                    //arba cia saus po transaction
+                    if(isCardPayment){
+                        printTicket()
+                    }
+                }
             }
 
             override fun onPOSInfoReceived(command: Int, status: Int, description: String?) {
                 Log.e("posInfo", description)
                 Log.e("posInfo", "command $command")
                 Log.e("posInfo", "status $status")
-                if(status == POSHandler.POS_STATUS_SUCCESS_PRINT_RECEIPT){
+                if(status == POSHandler.POS_STATUS_SUCCESS_PURCHASE){
+                    //arba saus sitoje vietoje
+                    if(isCardPayment){
+                        printTicket()
+                    }
+                }
+                if (status == POSHandler.POS_STATUS_SUCCESS_PRINT_RECEIPT) {
                     finish()
                 }
             }
@@ -64,28 +84,36 @@ class MainActivity : AppCompatActivity() {
         })
 
         POSHandler.getInstance().setPOSReadyListener {
-          if(data != null){
-                printTicket(data!!)
-            }else{
-                toast("Data was null")
+            if(!isCardPayment){
+                printTicket()
+            }
+            //Todo only for testing
+            else{
+                Handler().postDelayed({
+                    printTicket()
+                },6000)
             }
         }
+
     }
 
-    private fun reprintprint(){
+    private fun reprintprint() {
         POSHandler.setConnectionType(ConnectionType.BLUETOOTH)
         POSHandler.setApplicationContext(this)
-        if(data != null){
-            if(POSHandler.getInstance().isConnected){
-                Log.e("posInfo", "connected")
-                printTicket(data!!)
-            }else{
-                Log.e("posInfo", "disconnected")
-                POSHandler.getInstance().connectDevice(this)
+        if (POSHandler.getInstance().isConnected) {
+            Log.e("posInfo", "connected")
+            if(!isCardPayment){
+                printTicket()
             }
-        }else{
-            toast("Data was null")
-            //finish()
+            //Todo only for testing
+            else{
+                Handler().postDelayed({
+                    printTicket()
+                },6000)
+            }
+        } else {
+            Log.e("posInfo", "disconnected")
+            POSHandler.getInstance().connectDevice(this)
         }
     }
 
@@ -94,145 +122,60 @@ class MainActivity : AppCompatActivity() {
                 == PackageManager.PERMISSION_GRANTED)
     }
 
-    private fun getIncomingData(): TicketData? {
-        val ticketData = TicketData()
-//        if(intent.getStringExtra(TicketData.COMPANY_NAME_EXTRA) != null){
-//            ticketData.companyName = intent.getStringExtra(TicketData.COMPANY_NAME_EXTRA)
-//        }else {
-//            toast("COMPANY_NAME_EXTRA null")
-//            return null
-//        }
-        if(intent.getStringExtra(TicketData.COMPANY_CODE) != null){
-            ticketData.companyCode = intent.getStringExtra(TicketData.COMPANY_CODE)
-        }else {
-            toast("COMPANY_CODE null")
-            return null
+    private fun getIncomingData() {
+
+        if (intent.getStringExtra(Constants.RECEIPT_DATA) != null) {
+            isCardPayment = intent.getBooleanExtra(Constants.CARD_PAYMENT,false)
+            val ticketJson = intent.getStringExtra(Constants.RECEIPT_DATA)
+            val dataType = object : TypeToken<List<String>>() {}.type
+            dataList = Gson().fromJson(ticketJson, dataType)
+            if(dataList.size > 0){
+                if(isCardPayment){
+                    dataList.add("Atsiskaytymas kortele")
+                }else{
+                    dataList.add("Atsiskaitymas grynaisiais")
+                }
+            }
+            if (dataList.size > 30) {
+                dataListChuncked = dataList.chunked(30)
+            }
+        } else {
+            toast("Data was null null")
         }
-        if(intent.getStringExtra(TicketData.COMPANY_PHONE_NUMBER) != null){
-            ticketData.companyPhoneNumber = intent.getStringExtra(TicketData.COMPANY_PHONE_NUMBER)
-        }else {
-            toast("COMPANY_PHONE_NUMBER null")
-            return null
-        }
-        if(intent.getStringExtra(TicketData.PRICE_NUMBERS) != null){
-            ticketData.priceNumbers = intent.getStringExtra(TicketData.PRICE_NUMBERS)
-        }else {
-            toast("PRICE_NUMBERS null")
-            return null
-        }
-        if(intent.getStringExtra(TicketData.PRICE_WORDS) != null){
-            ticketData.priceWords = intent.getStringExtra(TicketData.PRICE_WORDS)
-        }else {
-            toast("PRICE_WORDS null")
-            return null
-        }
-        if(intent.getStringExtra(TicketData.PRODUCTS_TYPE) != null){
-            ticketData.productsType = intent.getStringExtra(TicketData.PRODUCTS_TYPE)
-        }else {
-            toast("PRODUCTS_TYPE null")
-            return null
-        }
-        if(intent.getStringExtra(TicketData.TICKET_NUMBER) != null){
-            ticketData.ticketNumber = intent.getStringExtra(TicketData.TICKET_NUMBER)
-        }else {
-            toast("TICKET_NUMBER null")
-            return null
-        }
-        if(intent.getStringExtra(TicketData.TICKET_SERIES) != null){
-            ticketData.ticketSeries = intent.getStringExtra(TicketData.TICKET_SERIES)
-        }else {
-            toast("TICKET_SERIES null")
-            return null
-        }
-        if(intent.getStringExtra(TicketData.PRODUCTS_LIST) != null){
-            val json = intent.getStringExtra(TicketData.PRODUCTS_LIST)
-            val listType = object : TypeToken<List<String>>() { }.type
-            val list = Gson().fromJson<List<String>>(json, listType)
-            ticketData.productsList = list.toMutableList()
-        }else {
-            toast("PRODUCTS_LIST null")
-            return null
-        }
-        return ticketData
     }
 
-    private fun printTicket(data : TicketData){
-        Log.e("posInfo", "printing")
-        val receipt = ReceiptData()
-        receipt.addEmptyRow()
-        receipt.addRow(
-            data.companyName,
-            ReceiptData.Align.LEFT,
-            ReceiptData.FontSize.SINGLE
-        )
-        receipt.addRow(
-            data.companyCode,
-            ReceiptData.Align.LEFT,
-            ReceiptData.FontSize.SINGLE
-        )
-        receipt.addRow(
-            data.companyPhoneNumber,
-            ReceiptData.Align.LEFT,
-            ReceiptData.FontSize.SINGLE
-        )
-        receipt.addEmptyRow()
-        receipt.addRow(
-            "Pinigu priemimo  kvitas",
-            ReceiptData.Align.CENTER,
-            ReceiptData.FontSize.DOUBLE
-        )
-        receipt.addEmptyRow()
-        receipt.addRow(
-            "Serija ${data.ticketSeries}   Nr. ${data.ticketNumber}",
-            ReceiptData.Align.LEFT,
-            ReceiptData.FontSize.SINGLE
-        )
-        receipt.addEmptyRow()
-        receipt.addRow(
-            getCurrentDate(),
-            ReceiptData.Align.CENTER,
-            ReceiptData.FontSize.SINGLE
-        )
-        //Todo hardcoded list
-        receipt.addEmptyRow()
-        receipt.addRow(
-            "Sumoketa uz: ${getFullProductsString(data.productsList)}",
-            ReceiptData.Align.CENTER,
-            ReceiptData.FontSize.SINGLE
-        )
-        receipt.addEmptyRow()
-        receipt.addRow(
-            "Sumoketa suma skaiciais: ${data.priceNumbers}",
-            ReceiptData.Align.LEFT,
-            ReceiptData.FontSize.SINGLE
-        )
-        receipt.addEmptyRow()
-        receipt.addRow(
-            "Sumoketa suma zodziais: ${data.priceWords}",
-            ReceiptData.Align.LEFT,
-            ReceiptData.FontSize.SINGLE
-        )
-        receipt.addEmptyRow()
-        receipt.addRow(
-            "Pinigus sumokejau: ________________________",
-            ReceiptData.Align.LEFT,
-            ReceiptData.FontSize.SINGLE
-        )
-        receipt.addEmptyRow()
-        receipt.addRow(
-            "Pinigus gavau: __________________________",
-            ReceiptData.Align.LEFT,
-            ReceiptData.FontSize.SINGLE
-        )
-        receipt.addEmptyRow()
-        receipt.addEmptyRow()
-        receipt.addEmptyRow()
-        receipt.addEmptyRow()
-        receipt.addEmptyRow()
-        receipt.addEmptyRow()
-        POSHandler.getInstance().printReceipt(receipt)
-        Log.e("posInfo", "print done")
+    private fun printTicket() {
+        if(dataList.size < 30 && dataList.size != 1){
+            printPartOfReciept(dataList)
+        } else if(dataListChuncked != null && dataListChuncked!!.isNotEmpty()){
+            for (x in 0..dataListChuncked!!.size){
+                Handler().postDelayed({
+                    printPartOfReciept(dataListChuncked!![x])
+                },(6000 * x).toLong())
+            }
+        }else{
+            toast("error while getting data")
+        }
 
+    }
+
+    private fun printPartOfReciept(list: List<String>) {
+        Log.e("posInfo", "print START")
+        val receiptData = ReceiptData()
+        list.forEach {
+            receiptData.addEmptyRow()
+            receiptData.addRow(
+                it,
+                ReceiptData.Align.LEFT,
+                ReceiptData.FontSize.SINGLE
+            )
+        }
+        receiptData.addEmptyRow()
+        receiptData.addEmptyRow()
+        receiptData.addEmptyRow()
+        receiptData.addEmptyRow()
+        POSHandler.getInstance().printReceipt(receiptData)
+        Log.e("posInfo", "print END")
     }
 
     override fun onDestroy() {
@@ -243,34 +186,36 @@ class MainActivity : AppCompatActivity() {
         return TextUtils.join(", ", productsList)
     }
 
-    private fun getCurrentDate() :String{
+    private fun getCurrentDate(): String {
         val calendar = Calendar.getInstance()
         val sdf = SimpleDateFormat("yyyy/M/dd hh:mm:ss", Locale.getDefault())
         return sdf.format(calendar.time)
     }
 
-    private fun testUri() : String {
-        val ticketData = TicketData()
-        ticketData.productsList.add("Vienas produktas")
-        ticketData.productsList.add("Antras produktas")
-        ticketData.productsList.add("Test")
-        ticketData.productsList.add("Ilgo pavadinimo produktas")
-        ticketData.productsList.add("mantiruote")
-        ticketData.productsList.add("Bokstas")
-        val listGson = Gson().toJson(ticketData.productsList)
+    private fun testUri(): String {
+        val listOfData  = getListOfDataTEST()
+        val listGson = Gson().toJson(listOfData)
+        Log.e("jsonExample", listGson)
         val intentForData = Intent("com.example.mypos")
         intentForData.addCategory(Intent.CATEGORY_DEFAULT)
         intentForData.addCategory(Intent.CATEGORY_BROWSABLE)
-        intentForData.putExtra(TicketData.COMPANY_NAME_EXTRA,ticketData.companyName)
-        intentForData.putExtra(TicketData.COMPANY_CODE,ticketData.companyCode)
-        intentForData.putExtra(TicketData.COMPANY_PHONE_NUMBER,ticketData.companyPhoneNumber)
-        intentForData.putExtra(TicketData.TICKET_SERIES,ticketData.ticketSeries)
-        intentForData.putExtra(TicketData.TICKET_NUMBER,ticketData.ticketNumber)
-        intentForData.putExtra(TicketData.PRODUCTS_TYPE,ticketData.productsType)
-        intentForData.putExtra(TicketData.PRICE_WORDS,ticketData.priceWords)
-        intentForData.putExtra(TicketData.PRICE_NUMBERS,ticketData.priceNumbers)
-        intentForData.putExtra(TicketData.PRODUCTS_LIST,listGson)
+        intentForData.putExtra(Constants.RECEIPT_DATA, listGson)
+        intentForData.putExtra(Constants.CARD_PAYMENT, false)
         Log.e("genUri", intentForData.toUri(Intent.URI_INTENT_SCHEME))
         return intentForData.toUri(Intent.URI_INTENT_SCHEME)
+    }
+
+    private fun getListOfDataTEST(): MutableList<String> {
+        val mutableDataList = mutableListOf<String>()
+        mutableDataList.add("9999999")
+        mutableDataList.add("Imones Pavadinimas")
+        mutableDataList.add("862100000")
+        mutableDataList.add("2019/01/01 16:55")
+        mutableDataList.add("Pinigu isdavimas")
+        mutableDataList.add("Paskirtis: Maitinimas")
+        mutableDataList.add("Viena preke, antra preke, trecia preke, t.t")
+        mutableDataList.add("Pinigus gavau:________")
+        mutableDataList.add("Pinigus priemiau:_____")
+        return mutableDataList
     }
 }
