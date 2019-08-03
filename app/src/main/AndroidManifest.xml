@@ -27,8 +27,6 @@
                 <category android:name="android.intent.category.BROWSABLE"/>
             </intent-filter>
         </activity>
-        <activity android:name=".MainActivity">
-        </activity>
     </application>
 
 </manifest>

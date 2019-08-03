@@ -3,23 +3,19 @@ package com.example.mypos
 import android.Manifest
 import android.content.pm.PackageManager
 import android.graphics.Color
-import androidx.appcompat.app.AppCompatActivity
 import android.os.Bundle
 import android.os.Handler
-import android.util.Log
 import android.util.Log.e
 import android.view.View
+import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.Observer
 import androidx.lifecycle.ViewModelProviders
-import com.google.gson.Gson
-import com.google.gson.reflect.TypeToken
 import com.mypos.slavesdk.POSHandler
 import com.mypos.slavesdk.POSInfoListener
 import com.mypos.slavesdk.ReceiptData
 import com.mypos.slavesdk.TransactionData
-import kotlinx.android.synthetic.main.activity_main.*
 import kotlinx.android.synthetic.main.activity_printing.*
 import org.jetbrains.anko.backgroundColor
 import org.jetbrains.anko.toast
@@ -35,14 +31,12 @@ class PrintingActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_printing)
-        //TODO permission check
         if(checkCoarsePermission()){
             setObservers()
             POSHandler.setApplicationContext(this)
             if (intent.extras != null) {
                 checkForIncomingExtras(intent.extras!!)
             } else {
-                //Todo error
                 viewModel.setErrorMessage("Intent extras was null")
             }
 
