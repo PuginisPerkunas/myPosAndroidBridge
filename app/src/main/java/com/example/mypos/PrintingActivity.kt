@@ -1,11 +1,16 @@
 package com.example.mypos
 
+import android.Manifest
+import android.content.pm.PackageManager
 import android.graphics.Color
 import androidx.appcompat.app.AppCompatActivity
 import android.os.Bundle
 import android.os.Handler
 import android.util.Log
 import android.util.Log.e
+import android.view.View
+import androidx.core.app.ActivityCompat
+import androidx.core.content.ContextCompat
 import androidx.lifecycle.Observer
 import androidx.lifecycle.ViewModelProviders
 import com.google.gson.Gson
@@ -14,6 +19,7 @@ import com.mypos.slavesdk.POSHandler
 import com.mypos.slavesdk.POSInfoListener
 import com.mypos.slavesdk.ReceiptData
 import com.mypos.slavesdk.TransactionData
+import kotlinx.android.synthetic.main.activity_main.*
 import kotlinx.android.synthetic.main.activity_printing.*
 import org.jetbrains.anko.backgroundColor
 import org.jetbrains.anko.toast
@@ -30,21 +36,56 @@ class PrintingActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_printing)
         //TODO permission check
-        setObservers()
-        POSHandler.setApplicationContext(this)
-        if (intent.extras != null) {
-            checkForIncomingExtras(intent.extras!!)
-        } else {
-            //Todo error
-            viewModel.setErrorMessage("Intent extras was null")
-        }
+        if(checkCoarsePermission()){
+            setObservers()
+            POSHandler.setApplicationContext(this)
+            if (intent.extras != null) {
+                checkForIncomingExtras(intent.extras!!)
+            } else {
+                //Todo error
+                viewModel.setErrorMessage("Intent extras was null")
+            }
 
-        btnForceConnect.setOnClickListener {
-            POSHandler.getInstance().connectDevice(this@PrintingActivity)
-            POSHandler.getInstance().setPOSReadyListener {
-                updateConnectButtonStatus(true)
+            btnForceConnect.setOnClickListener {
+                POSHandler.getInstance().connectDevice(this@PrintingActivity)
+                POSHandler.getInstance().setPOSReadyListener {
+                    updateConnectButtonStatus(true)
+                }
+            }
+        }else{
+            tvStatuses.setTextColor(Color.RED)
+            tvStatuses.text = "Permission needed to operate"
+            btnForceConnect.visibility = View.INVISIBLE
+            permissionButton.visibility = View.VISIBLE
+            permissionButton.setOnClickListener {
+                ActivityCompat.requestPermissions(
+                    this,
+                    arrayOf(Manifest.permission.ACCESS_COARSE_LOCATION),
+                    Constants.MY_PERMISSIONS_REQUEST_LOCATION
+                )
             }
         }
+    }
+
+    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
+        if(requestCode == Constants.MY_PERMISSIONS_REQUEST_LOCATION){
+            if(grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED){
+                tvStatuses.text = "Permission granted"
+                tvStatuses.setTextColor(Color.BLACK)
+                btnForceConnect.visibility = View.VISIBLE
+                permissionButton.visibility = View.INVISIBLE
+                btnForceConnect.setOnClickListener {
+                    POSHandler.getInstance().connectDevice(this@PrintingActivity)
+                }
+            }else{
+                ActivityCompat.requestPermissions(
+                    this,
+                    arrayOf(Manifest.permission.ACCESS_COARSE_LOCATION),
+                    Constants.MY_PERMISSIONS_REQUEST_LOCATION
+                )
+            }
+        }
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
     }
 
     private fun setObservers() {
@@ -184,5 +225,10 @@ class PrintingActivity : AppCompatActivity() {
         } else {
             viewModel.setErrorMessage("Error while getting data, null")
         }
+    }
+
+    private fun checkCoarsePermission(): Boolean {
+        return (ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_COARSE_LOCATION)
+                == PackageManager.PERMISSION_GRANTED)
     }
 }
