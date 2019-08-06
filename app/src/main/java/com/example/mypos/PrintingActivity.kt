@@ -31,9 +31,9 @@ class PrintingActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_printing)
+        POSHandler.setApplicationContext(this)
         if(checkCoarsePermission()){
             setObservers()
-            POSHandler.setApplicationContext(this)
             if (intent.extras != null) {
                 checkForIncomingExtras(intent.extras!!)
             } else {
@@ -48,7 +48,7 @@ class PrintingActivity : AppCompatActivity() {
             }
         }else{
             tvStatuses.setTextColor(Color.RED)
-            tvStatuses.text = "Permission needed to operate"
+            tvStatuses.text = getString(R.string.permission_needed_message)
             btnForceConnect.visibility = View.INVISIBLE
             permissionButton.visibility = View.VISIBLE
             permissionButton.setOnClickListener {
@@ -64,7 +64,7 @@ class PrintingActivity : AppCompatActivity() {
     override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
         if(requestCode == Constants.MY_PERMISSIONS_REQUEST_LOCATION){
             if(grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED){
-                tvStatuses.text = "Permission granted"
+                tvStatuses.text = getString(R.string.permission_granted_message)
                 tvStatuses.setTextColor(Color.BLACK)
                 btnForceConnect.visibility = View.VISIBLE
                 permissionButton.visibility = View.INVISIBLE
@@ -120,6 +120,9 @@ class PrintingActivity : AppCompatActivity() {
                 e("posInfo", "status $status")
                 if (status == POSHandler.POS_STATUS_SUCCESS_PRINT_RECEIPT) {
                     if(printingLastItem){
+                        runOnUiThread {
+                            tvStatuses.text = description
+                        }
                         finish()
                     }
                 }
@@ -133,7 +136,9 @@ class PrintingActivity : AppCompatActivity() {
         POSHandler.getInstance().setPOSInfoListener(object : POSInfoListener {
             override fun onTransactionComplete(transactionData: TransactionData?) {
                 if (transactionData != null) {
-                    printReceipt()
+                    runOnUiThread {
+                        printReceipt()
+                    }
                 }
             }
 
@@ -144,7 +149,9 @@ class PrintingActivity : AppCompatActivity() {
                 if (status == POSHandler.POS_STATUS_SUCCESS_PURCHASE) {
                     //arba saus sitoje vietoje
                     if (viewModel.isCardPay()) {
-                        printReceipt()
+                        runOnUiThread {
+                            printReceipt()
+                        }
                     }
                 }
                 if (status == POSHandler.POS_STATUS_SUCCESS_PRINT_RECEIPT) {
@@ -205,7 +212,7 @@ class PrintingActivity : AppCompatActivity() {
 
     private fun updateConnectButtonStatus(connectionStatus: Boolean) {
         if(connectionStatus){
-            btnForceConnect.text = "CONNECTED"
+            btnForceConnect.text = getString(R.string.connected_message)
             btnForceConnect.backgroundColor= Color.GREEN
         }
     }

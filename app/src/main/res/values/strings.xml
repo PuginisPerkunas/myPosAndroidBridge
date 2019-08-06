@@ -1,3 +1,8 @@
 <resources>
     <string name="app_name">myPos3</string>
+    <string name="connect">Connect</string>
+    <string name="permission_needed">Permission needed</string>
+    <string name="permission_needed_message">Permission needed to operate</string>
+    <string name="permission_granted_message">Permission granted</string>
+    <string name="connected_message">CONNECTED</string>
 </resources>
