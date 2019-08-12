@@ -1,10 +1,12 @@
 package com.example.mypos
 
 import android.Manifest
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.Color
 import android.os.Bundle
 import android.os.Handler
+import android.util.Log
 import android.util.Log.e
 import android.view.View
 import androidx.appcompat.app.AppCompatActivity
@@ -12,10 +14,8 @@ import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.Observer
 import androidx.lifecycle.ViewModelProviders
-import com.mypos.slavesdk.POSHandler
-import com.mypos.slavesdk.POSInfoListener
-import com.mypos.slavesdk.ReceiptData
-import com.mypos.slavesdk.TransactionData
+import com.google.gson.Gson
+import com.mypos.slavesdk.*
 import kotlinx.android.synthetic.main.activity_printing.*
 import org.jetbrains.anko.backgroundColor
 import org.jetbrains.anko.toast
@@ -32,6 +32,7 @@ class PrintingActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_printing)
         POSHandler.setApplicationContext(this)
+        POSHandler.setLanguage(Language.CROATIAN)
         if(checkCoarsePermission()){
             setObservers()
             if (intent.extras != null) {
@@ -59,6 +60,7 @@ class PrintingActivity : AppCompatActivity() {
                 )
             }
         }
+        testUri()
     }
 
     override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
@@ -93,7 +95,7 @@ class PrintingActivity : AppCompatActivity() {
                 if (!viewModel.isCardPay()) {
                     printReceipt()
                 } else {
-                    waitForTransactionComplete()
+                    openPayment()
                 }
             } else {
                 POSHandler.getInstance().setPOSReadyListener {
@@ -101,12 +103,19 @@ class PrintingActivity : AppCompatActivity() {
                     if (!viewModel.isCardPay()) {
                         printReceipt()
                     } else {
-                        waitForTransactionComplete()
+                        openPayment()
                     }
                 }
                 POSHandler.getInstance().connectDevice(this)
             }
         })
+    }
+
+    private fun openPayment() {
+        waitForTransactionComplete()
+        POSHandler.getInstance().purchase(viewModel.getAmount(),
+            "999999999",
+            POSHandler.RECEIPT_DO_NOT_PRINT)
     }
 
     private fun addFinishListener() {
@@ -137,7 +146,9 @@ class PrintingActivity : AppCompatActivity() {
             override fun onTransactionComplete(transactionData: TransactionData?) {
                 if (transactionData != null) {
                     runOnUiThread {
-                        printReceipt()
+                        Handler().postDelayed({
+                            printReceipt()
+                        },2000)
                     }
                 }
             }
@@ -150,7 +161,9 @@ class PrintingActivity : AppCompatActivity() {
                     //arba saus sitoje vietoje
                     if (viewModel.isCardPay()) {
                         runOnUiThread {
-                            printReceipt()
+                            Handler().postDelayed({
+                                printReceipt()
+                            },2000)
                         }
                     }
                 }
@@ -222,6 +235,9 @@ class PrintingActivity : AppCompatActivity() {
             val ticketJson = intent.getStringExtra(Constants.RECEIPT_DATA)
             tvStatuses.text = ticketJson
             viewModel.setIsCardPayment(intent.getBooleanExtra(Constants.CARD_PAYMENT, false))
+            viewModel.setEndpointLink(intent.getStringExtra(Constants.ENDPOINT))
+            viewModel.setAmount(intent.getDoubleExtra(Constants.AMOUNT,0.0))
+            viewModel.setIsCardPayment(intent.getBooleanExtra(Constants.CARD_PAYMENT, false))
             viewModel.setDataJson(ticketJson)
         } else {
             viewModel.setErrorMessage("Error while getting data, null")
@@ -231,5 +247,33 @@ class PrintingActivity : AppCompatActivity() {
     private fun checkCoarsePermission(): Boolean {
         return (ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_COARSE_LOCATION)
                 == PackageManager.PERMISSION_GRANTED)
+    }
+
+    private fun testUri(): String {
+        val listOfData  = getListOfDataTEST()
+        val listGson = Gson().toJson(listOfData)
+        Log.e("jsonExample", listGson)
+        val intentForData = Intent("com.example.mypos")
+        intentForData.addCategory(Intent.CATEGORY_DEFAULT)
+        intentForData.addCategory(Intent.CATEGORY_BROWSABLE)
+        intentForData.putExtra(Constants.RECEIPT_DATA, listGson)
+        intentForData.putExtra(Constants.CARD_PAYMENT, false)
+        intentForData.putExtra(Constants.AMOUNT, 00.01)
+        intentForData.putExtra(Constants.ENDPOINT, "endpointLinkas")
+        Log.e("genUri", intentForData.toUri(Intent.URI_INTENT_SCHEME))
+        return intentForData.toUri(Intent.URI_INTENT_SCHEME)
+    }
+
+    private fun getListOfDataTEST(): MutableList<String> {
+        val listOfTestt = mutableListOf<String>()
+        listOfTestt.add("Pirma eilute be LT")
+        listOfTestt.add("Antra eilute be LT")
+        listOfTestt.add("Trecia  trumpa be LT")
+        listOfTestt.add("Ketvirta ilga eilute test test ttest  be LT")
+        listOfTestt.add("Pirma eilutė su LT")
+        listOfTestt.add("ąčęėįšųū su LT")
+        listOfTestt.add("ą č ę ė į š ų ū su LT")
+        listOfTestt.add("ą su LT")
+        return listOfTestt
     }
 }
