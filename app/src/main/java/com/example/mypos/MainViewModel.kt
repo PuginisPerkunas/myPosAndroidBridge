@@ -18,7 +18,7 @@ class MainViewModel : ViewModel() {
     }
 
     fun setIsCardPayment(isCardPayment: Boolean) {
-       isCardPay = isCardPayment
+        isCardPay = isCardPayment
     }
 
     fun isCardPay() : Boolean{
@@ -59,6 +59,10 @@ class MainViewModel : ViewModel() {
 
     fun getAmount() : String{
         return amount.toString()
+    }
+
+    fun getEndpoint(): String {
+        return endpointLink
     }
 
 }

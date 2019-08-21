@@ -14,16 +14,26 @@ import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.Observer
 import androidx.lifecycle.ViewModelProviders
+import com.android.volley.RequestQueue
+import com.android.volley.Response
+import com.android.volley.toolbox.StringRequest
+import com.android.volley.toolbox.Volley
 import com.google.gson.Gson
-import com.mypos.slavesdk.*
+import com.mypos.slavesdk.POSHandler
+import com.mypos.slavesdk.POSInfoListener
+import com.mypos.slavesdk.ReceiptData
+import com.mypos.slavesdk.TransactionData
 import kotlinx.android.synthetic.main.activity_printing.*
 import org.jetbrains.anko.backgroundColor
 import org.jetbrains.anko.toast
 
+
 class PrintingActivity : AppCompatActivity() {
 
     private var printingLastItem = false
-
+    val requestQueue : RequestQueue by lazy {
+        Volley.newRequestQueue(this)
+    }
     val viewModel: MainViewModel by lazy {
         ViewModelProviders.of(this).get(MainViewModel::class.java)
     }
@@ -32,7 +42,7 @@ class PrintingActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_printing)
         POSHandler.setApplicationContext(this)
-        POSHandler.setLanguage(Language.CROATIAN)
+
         if(checkCoarsePermission()){
             setObservers()
             if (intent.extras != null) {
@@ -130,9 +140,10 @@ class PrintingActivity : AppCompatActivity() {
                 if (status == POSHandler.POS_STATUS_SUCCESS_PRINT_RECEIPT) {
                     if(printingLastItem){
                         runOnUiThread {
-                            tvStatuses.text = description
+                            //tvStatuses.text = description
+                            makeSuccessRequestThanClose()
                         }
-                        finish()
+                       // finish()
                     }
                 }
             }
@@ -147,8 +158,9 @@ class PrintingActivity : AppCompatActivity() {
                 if (transactionData != null) {
                     runOnUiThread {
                         Handler().postDelayed({
+                            e("OnPrint","onTransactionComplete")
                             printReceipt()
-                        },2000)
+                        },4000)
                     }
                 }
             }
@@ -162,18 +174,45 @@ class PrintingActivity : AppCompatActivity() {
                     if (viewModel.isCardPay()) {
                         runOnUiThread {
                             Handler().postDelayed({
-                                printReceipt()
+                                e("OnPrint","status == POSHandler.POS_STATUS_SUCCESS_PURCHASE")
+                                //  printReceipt()
                             },2000)
                         }
                     }
                 }
                 if (status == POSHandler.POS_STATUS_SUCCESS_PRINT_RECEIPT) {
                     if(printingLastItem){
-                        finish()
+                        runOnUiThread {
+                            makeSuccessRequestThanClose()
+                        }
                     }
                 }
             }
         })
+    }
+
+    private fun makeSuccessRequestThanClose() {
+        val postRequest = object : StringRequest(
+            Method.POST, viewModel.getEndpoint(),
+            Response.Listener { response ->
+                // response
+                Log.d("Response", response)
+                finish()
+            },
+            Response.ErrorListener {
+                // error
+                Log.d("Error.Response", it.localizedMessage)
+                viewModel.setErrorMessage(it.localizedMessage)
+            }
+        ) {
+            override fun getParams(): Map<String, String> {
+                val params = HashMap<String, String>()
+                params["status"] = "true"
+                params["info"] = "Operation done successfully"
+                return params
+            }
+        }
+        requestQueue.add(postRequest)
     }
 
     private fun printReceipt() {
