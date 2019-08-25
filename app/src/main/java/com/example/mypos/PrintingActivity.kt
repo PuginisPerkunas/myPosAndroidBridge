@@ -16,6 +16,7 @@ import androidx.lifecycle.Observer
 import androidx.lifecycle.ViewModelProviders
 import com.android.volley.RequestQueue
 import com.android.volley.Response
+import com.android.volley.VolleyLog
 import com.android.volley.toolbox.StringRequest
 import com.android.volley.toolbox.Volley
 import com.google.gson.Gson
@@ -26,12 +27,14 @@ import com.mypos.slavesdk.TransactionData
 import kotlinx.android.synthetic.main.activity_printing.*
 import org.jetbrains.anko.backgroundColor
 import org.jetbrains.anko.toast
+import org.json.JSONObject
+import java.io.UnsupportedEncodingException
 
 
 class PrintingActivity : AppCompatActivity() {
 
     private var printingLastItem = false
-    val requestQueue : RequestQueue by lazy {
+    val requestQueue: RequestQueue by lazy {
         Volley.newRequestQueue(this)
     }
     val viewModel: MainViewModel by lazy {
@@ -42,8 +45,8 @@ class PrintingActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_printing)
         POSHandler.setApplicationContext(this)
-
-        if(checkCoarsePermission()){
+        VolleyLog.DEBUG = true
+        if (checkCoarsePermission()) {
             setObservers()
             if (intent.extras != null) {
                 checkForIncomingExtras(intent.extras!!)
@@ -57,7 +60,7 @@ class PrintingActivity : AppCompatActivity() {
                     updateConnectButtonStatus(true)
                 }
             }
-        }else{
+        } else {
             tvStatuses.setTextColor(Color.RED)
             tvStatuses.text = getString(R.string.permission_needed_message)
             btnForceConnect.visibility = View.INVISIBLE
@@ -70,12 +73,16 @@ class PrintingActivity : AppCompatActivity() {
                 )
             }
         }
-        testUri()
+        // testUri()
     }
 
-    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
-        if(requestCode == Constants.MY_PERMISSIONS_REQUEST_LOCATION){
-            if(grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED){
+    override fun onRequestPermissionsResult(
+        requestCode: Int,
+        permissions: Array<out String>,
+        grantResults: IntArray
+    ) {
+        if (requestCode == Constants.MY_PERMISSIONS_REQUEST_LOCATION) {
+            if (grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
                 tvStatuses.text = getString(R.string.permission_granted_message)
                 tvStatuses.setTextColor(Color.BLACK)
                 btnForceConnect.visibility = View.VISIBLE
@@ -83,7 +90,7 @@ class PrintingActivity : AppCompatActivity() {
                 btnForceConnect.setOnClickListener {
                     POSHandler.getInstance().connectDevice(this@PrintingActivity)
                 }
-            }else{
+            } else {
                 ActivityCompat.requestPermissions(
                     this,
                     arrayOf(Manifest.permission.ACCESS_COARSE_LOCATION),
@@ -100,9 +107,10 @@ class PrintingActivity : AppCompatActivity() {
             toast(it)
         })
         viewModel.observeFullDataList().observe(this, Observer {
-            addFinishListener()
+
             if (it != null && isPosConnected()) {
                 if (!viewModel.isCardPay()) {
+                    addFinishListener()
                     printReceipt()
                 } else {
                     openPayment()
@@ -111,6 +119,7 @@ class PrintingActivity : AppCompatActivity() {
                 POSHandler.getInstance().setPOSReadyListener {
                     updateConnectButtonStatus(true)
                     if (!viewModel.isCardPay()) {
+                        addFinishListener()
                         printReceipt()
                     } else {
                         openPayment()
@@ -123,9 +132,11 @@ class PrintingActivity : AppCompatActivity() {
 
     private fun openPayment() {
         waitForTransactionComplete()
-        POSHandler.getInstance().purchase(viewModel.getAmount(),
+        POSHandler.getInstance().purchase(
+            viewModel.getAmount(),
             "999999999",
-            POSHandler.RECEIPT_DO_NOT_PRINT)
+            POSHandler.RECEIPT_DO_NOT_PRINT
+        )
     }
 
     private fun addFinishListener() {
@@ -137,13 +148,55 @@ class PrintingActivity : AppCompatActivity() {
                 e("posInfo", description)
                 e("posInfo", "command $command")
                 e("posInfo", "status $status")
-                if (status == POSHandler.POS_STATUS_SUCCESS_PRINT_RECEIPT) {
-                    if(printingLastItem){
-                        runOnUiThread {
-                            //tvStatuses.text = description
-                            makeSuccessRequestThanClose()
+                when (status) {
+                    POSHandler.POS_STATUS_SUCCESS_PRINT_RECEIPT -> {
+                        if (printingLastItem) {
+                            runOnUiThread {
+                                //tvStatuses.text = description
+                                makeSuccessRequestThanClose()
+                            }
+                            // finish()
                         }
-                       // finish()
+                    }
+                    POSHandler.POS_STATUS_ACTIVATION_REQUIRED -> {
+                        runOnUiThread {
+                            sendError("POS_STATUS_ACTIVATION_REQUIRED")
+                        }
+                    }
+                    POSHandler.POS_STATUS_CARD_CHIP_ERROR -> {
+                        runOnUiThread {
+                            sendError("POS_STATUS_CARD_CHIP_ERROR")
+                        }
+                    }
+                    POSHandler.POS_STATUS_INTERNAL_ERROR -> {
+                        runOnUiThread {
+                            sendError("POS_STATUS_INTERNAL_ERROR")
+                        }
+                    }
+                    POSHandler.POS_STATUS_INVALID_PIN -> {
+                        runOnUiThread {
+                            sendError("POS_STATUS_INVALID_PIN")
+                        }
+                    }
+                    POSHandler.POS_STATUS_NOT_SUPPORTED_CARD -> {
+                        runOnUiThread {
+                            sendError("POS_STATUS_NOT_SUPPORTED_CARD")
+                        }
+                    }
+                    POSHandler.POS_STATUS_NO_CARD_FOUND -> {
+                        runOnUiThread {
+                            sendError("POS_STATUS_NO_CARD_FOUND")
+                        }
+                    }
+                    POSHandler.POS_STATUS_USER_CANCEL -> {
+                        runOnUiThread {
+                            sendError("POS_STATUS_USER_CANCEL")
+                        }
+                    }
+                    POSHandler.POS_STATUS_WRONG_AMOUNT -> {
+                        runOnUiThread {
+                            sendError("POS_STATUS_WRONG_AMOUNT")
+                        }
                     }
                 }
             }
@@ -158,9 +211,9 @@ class PrintingActivity : AppCompatActivity() {
                 if (transactionData != null) {
                     runOnUiThread {
                         Handler().postDelayed({
-                            e("OnPrint","onTransactionComplete")
-                            printReceipt()
-                        },4000)
+                            e("OnPrint", "onTransactionComplete")
+                            recheck()
+                        }, 4000)
                     }
                 }
             }
@@ -169,21 +222,54 @@ class PrintingActivity : AppCompatActivity() {
                 e("posInfo", description)
                 e("posInfo", "command $command")
                 e("posInfo", "status $status")
-                if (status == POSHandler.POS_STATUS_SUCCESS_PURCHASE) {
-                    //arba saus sitoje vietoje
-                    if (viewModel.isCardPay()) {
-                        runOnUiThread {
-                            Handler().postDelayed({
-                                e("OnPrint","status == POSHandler.POS_STATUS_SUCCESS_PURCHASE")
-                                //  printReceipt()
-                            },2000)
+                when (status) {
+                    POSHandler.POS_STATUS_SUCCESS_PRINT_RECEIPT -> {
+                        if (printingLastItem) {
+                            runOnUiThread {
+                                //tvStatuses.text = description
+                               makeSuccessRequestThanClose()
+                            }
+                            // finish()
                         }
                     }
-                }
-                if (status == POSHandler.POS_STATUS_SUCCESS_PRINT_RECEIPT) {
-                    if(printingLastItem){
+                    POSHandler.POS_STATUS_ACTIVATION_REQUIRED -> {
                         runOnUiThread {
-                            makeSuccessRequestThanClose()
+                            sendError("POS_STATUS_ACTIVATION_REQUIRED")
+                        }
+                    }
+                    POSHandler.POS_STATUS_CARD_CHIP_ERROR -> {
+                        runOnUiThread {
+                            sendError("POS_STATUS_CARD_CHIP_ERROR")
+                        }
+                    }
+                    POSHandler.POS_STATUS_INTERNAL_ERROR -> {
+                        runOnUiThread {
+                            sendError("POS_STATUS_INTERNAL_ERROR")
+                        }
+                    }
+                    POSHandler.POS_STATUS_INVALID_PIN -> {
+                        runOnUiThread {
+                            sendError("POS_STATUS_INVALID_PIN")
+                        }
+                    }
+                    POSHandler.POS_STATUS_NOT_SUPPORTED_CARD -> {
+                        runOnUiThread {
+                            sendError("POS_STATUS_NOT_SUPPORTED_CARD")
+                        }
+                    }
+                    POSHandler.POS_STATUS_NO_CARD_FOUND -> {
+                        runOnUiThread {
+                            sendError("POS_STATUS_NO_CARD_FOUND")
+                        }
+                    }
+                    POSHandler.POS_STATUS_USER_CANCEL -> {
+                        runOnUiThread {
+                            sendError("POS_STATUS_USER_CANCEL")
+                        }
+                    }
+                    POSHandler.POS_STATUS_WRONG_AMOUNT -> {
+                        runOnUiThread {
+                            sendError("POS_STATUS_WRONG_AMOUNT")
                         }
                     }
                 }
@@ -191,7 +277,11 @@ class PrintingActivity : AppCompatActivity() {
         })
     }
 
-    private fun makeSuccessRequestThanClose() {
+    private fun recheck() {
+        printReceipt()
+    }
+
+    /*private fun makeSuccessRequestThanClose() {
         val postRequest = object : StringRequest(
             Method.POST, viewModel.getEndpoint(),
             Response.Listener { response ->
@@ -201,15 +291,95 @@ class PrintingActivity : AppCompatActivity() {
             },
             Response.ErrorListener {
                 // error
-                Log.d("Error.Response", it.localizedMessage)
-                viewModel.setErrorMessage(it.localizedMessage)
+                if(it != null && it.localizedMessage != null){
+                    Log.d("Error.Response", it.localizedMessage)
+                    viewModel.setErrorMessage(it.localizedMessage)
+                }
             }
         ) {
             override fun getParams(): Map<String, String> {
                 val params = HashMap<String, String>()
                 params["status"] = "true"
                 params["info"] = "Operation done successfully"
+                params["data"] = viewModel.getEndpoint()
                 return params
+            }
+        }
+        requestQueue.add(postRequest)
+    }*/
+
+    private fun makeSuccessRequestThanClose() {
+        val jsonBody = JSONObject()
+        jsonBody.put("status", "success")
+        jsonBody.put("info", "Operation done successfully")
+        jsonBody.put(Constants.CARD_PAYMENT, viewModel.isCardPay())
+        val requestBody = jsonBody.toString()
+
+        val postRequest = object : StringRequest(
+            Method.POST, viewModel.getEndpoint(),
+            Response.Listener { response ->
+                // response
+                Log.d("Response", response)
+                finish()
+            },
+            Response.ErrorListener {
+                // error
+                if (it != null && it.localizedMessage != null) {
+                    Log.d("Error.Response", it.localizedMessage)
+                    viewModel.setErrorMessage(it.localizedMessage)
+                }
+            }
+        ) {
+            override fun getBody(): ByteArray? {
+                return try {
+                    requestBody.toByteArray()
+                } catch (e: UnsupportedEncodingException) {
+                    null
+                }
+            }
+
+
+            override fun getBodyContentType(): String {
+                return "application/json; charset=utf-8"
+            }
+        }
+        requestQueue.add(postRequest)
+    }
+
+
+    private fun sendError(message: String) {
+        val jsonBody = JSONObject()
+        jsonBody.put("status", "failure")
+        jsonBody.put("info", message)
+        jsonBody.put(Constants.CARD_PAYMENT, viewModel.isCardPay())
+
+        val requestBody = jsonBody.toString()
+
+        val postRequest = object : StringRequest(
+            Method.POST, viewModel.getEndpoint(),
+            Response.Listener { response ->
+                // response
+                Log.d("Response", response)
+                finish()
+            },
+            Response.ErrorListener {
+                // error
+                if (it != null && it.localizedMessage != null) {
+                    Log.d("Error.Response", it.localizedMessage)
+                    viewModel.setErrorMessage(it.localizedMessage)
+                }
+            }
+        ) {
+            override fun getBody(): ByteArray? {
+                return try {
+                    requestBody.toByteArray()
+                } catch (e: UnsupportedEncodingException) {
+                    null
+                }
+            }
+
+            override fun getBodyContentType(): String {
+                return "application/json; charset=utf-8"
             }
         }
         requestQueue.add(postRequest)
@@ -225,7 +395,7 @@ class PrintingActivity : AppCompatActivity() {
             val chunkedList = fullDataList.chunked(30)
             for (x in 0 until chunkedList.size) {
                 Handler().postDelayed({
-                    if(x + 1 == chunkedList.size){
+                    if (x + 1 == chunkedList.size) {
                         printingLastItem = true
                     }
                     printPartOfReceipt(chunkedList[x])
@@ -246,7 +416,7 @@ class PrintingActivity : AppCompatActivity() {
             )
         }
         receiptData.addEmptyRow()
-        if(printingLastItem){
+        if (printingLastItem) {
             receiptData.addEmptyRow()
             receiptData.addEmptyRow()
             receiptData.addEmptyRow()
@@ -263,9 +433,9 @@ class PrintingActivity : AppCompatActivity() {
     }
 
     private fun updateConnectButtonStatus(connectionStatus: Boolean) {
-        if(connectionStatus){
+        if (connectionStatus) {
             btnForceConnect.text = getString(R.string.connected_message)
-            btnForceConnect.backgroundColor= Color.GREEN
+            btnForceConnect.backgroundColor = Color.GREEN
         }
     }
 
@@ -275,7 +445,7 @@ class PrintingActivity : AppCompatActivity() {
             tvStatuses.text = ticketJson
             viewModel.setIsCardPayment(intent.getBooleanExtra(Constants.CARD_PAYMENT, false))
             viewModel.setEndpointLink(intent.getStringExtra(Constants.ENDPOINT))
-            viewModel.setAmount(intent.getDoubleExtra(Constants.AMOUNT,0.0))
+            viewModel.setAmount(intent.getDoubleExtra(Constants.AMOUNT, 0.0))
             viewModel.setIsCardPayment(intent.getBooleanExtra(Constants.CARD_PAYMENT, false))
             viewModel.setDataJson(ticketJson)
         } else {
@@ -289,7 +459,7 @@ class PrintingActivity : AppCompatActivity() {
     }
 
     private fun testUri(): String {
-        val listOfData  = getListOfDataTEST()
+        val listOfData = getListOfDataTEST()
         val listGson = Gson().toJson(listOfData)
         Log.e("jsonExample", listGson)
         val intentForData = Intent("com.example.mypos")
@@ -299,6 +469,7 @@ class PrintingActivity : AppCompatActivity() {
         intentForData.putExtra(Constants.CARD_PAYMENT, false)
         intentForData.putExtra(Constants.AMOUNT, 00.01)
         intentForData.putExtra(Constants.ENDPOINT, "endpointLinkas")
+        // intentForData.putExtra(Constants.ENDPOINT_POST_DATA, "endpointPostData")
         Log.e("genUri", intentForData.toUri(Intent.URI_INTENT_SCHEME))
         return intentForData.toUri(Intent.URI_INTENT_SCHEME)
     }

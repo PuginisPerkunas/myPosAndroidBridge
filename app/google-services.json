@@ -1,0 +1,40 @@
+{
+  "project_info": {
+    "project_number": "222968200649",
+    "firebase_url": "https://myposbridge.firebaseio.com",
+    "project_id": "myposbridge",
+    "storage_bucket": "myposbridge.appspot.com"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:222968200649:android:2f9f480f38911d09",
+        "android_client_info": {
+          "package_name": "com.example.mypos"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "222968200649-vmq3188uoa1h49he1e58is9ssup7rv2q.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAOUtRcLpHDkjxbFASWMKlL2PseaY2Uh0E"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "222968200649-vmq3188uoa1h49he1e58is9ssup7rv2q.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

@@ -1,5 +1,6 @@
 package com.example.mypos
 
+import android.util.Log.e
 import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.ViewModel
 import com.google.gson.Gson
@@ -44,16 +45,19 @@ class MainViewModel : ViewModel() {
     }
 
     private fun setDataList(dataList: List<String>?) {
+        e("dataList", fullDataList.value.toString())
         fullDataList.value = dataList
     }
 
     fun setEndpointLink(endpoint: String?) {
+        e("endpoint",endpoint)
         if(endpoint != null && endpoint.isNotEmpty()){
             endpointLink = endpoint
         }
     }
 
     fun setAmount(amount: Double) {
+        e("endpoint",amount.toString())
         this.amount = amount
     }
 
