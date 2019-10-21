@@ -20,10 +20,7 @@ import com.android.volley.VolleyLog
 import com.android.volley.toolbox.StringRequest
 import com.android.volley.toolbox.Volley
 import com.google.gson.Gson
-import com.mypos.slavesdk.POSHandler
-import com.mypos.slavesdk.POSInfoListener
-import com.mypos.slavesdk.ReceiptData
-import com.mypos.slavesdk.TransactionData
+import com.mypos.slavesdk.*
 import kotlinx.android.synthetic.main.activity_printing.*
 import org.jetbrains.anko.backgroundColor
 import org.jetbrains.anko.toast
@@ -45,6 +42,8 @@ class PrintingActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_printing)
         POSHandler.setApplicationContext(this)
+        POSHandler.setLanguage(Language.LITHUANIAN)
+        //POSHandler.setLanguage()
         VolleyLog.DEBUG = true
         if (checkCoarsePermission()) {
             setObservers()
@@ -135,7 +134,7 @@ class PrintingActivity : AppCompatActivity() {
         POSHandler.getInstance().purchase(
             viewModel.getAmount(),
             "999999999",
-            POSHandler.RECEIPT_DO_NOT_PRINT
+            POSHandler.RECEIPT_PRINT_AFTER_CONFIRMATION
         )
     }
 
@@ -211,6 +210,7 @@ class PrintingActivity : AppCompatActivity() {
                 if (transactionData != null) {
                     runOnUiThread {
                         Handler().postDelayed({
+                            //todo
                             e("OnPrint", "onTransactionComplete")
                             recheck()
                         }, 4000)
@@ -281,40 +281,13 @@ class PrintingActivity : AppCompatActivity() {
         printReceipt()
     }
 
-    /*private fun makeSuccessRequestThanClose() {
-        val postRequest = object : StringRequest(
-            Method.POST, viewModel.getEndpoint(),
-            Response.Listener { response ->
-                // response
-                Log.d("Response", response)
-                finish()
-            },
-            Response.ErrorListener {
-                // error
-                if(it != null && it.localizedMessage != null){
-                    Log.d("Error.Response", it.localizedMessage)
-                    viewModel.setErrorMessage(it.localizedMessage)
-                }
-            }
-        ) {
-            override fun getParams(): Map<String, String> {
-                val params = HashMap<String, String>()
-                params["status"] = "true"
-                params["info"] = "Operation done successfully"
-                params["data"] = viewModel.getEndpoint()
-                return params
-            }
-        }
-        requestQueue.add(postRequest)
-    }*/
-
     private fun makeSuccessRequestThanClose() {
         val jsonBody = JSONObject()
         jsonBody.put("status", "success")
         jsonBody.put("info", "Operation done successfully")
         jsonBody.put(Constants.CARD_PAYMENT, viewModel.isCardPay())
         val requestBody = jsonBody.toString()
-
+        Log.e("log","makeSuccessRequestThanClose + ${viewModel.getEndpoint()}")
         val postRequest = object : StringRequest(
             Method.POST, viewModel.getEndpoint(),
             Response.Listener { response ->
@@ -352,7 +325,7 @@ class PrintingActivity : AppCompatActivity() {
         jsonBody.put("status", "failure")
         jsonBody.put("info", message)
         jsonBody.put(Constants.CARD_PAYMENT, viewModel.isCardPay())
-
+        Log.e("log","sendError + ${viewModel.getEndpoint()}")
         val requestBody = jsonBody.toString()
 
         val postRequest = object : StringRequest(
@@ -385,44 +358,51 @@ class PrintingActivity : AppCompatActivity() {
         requestQueue.add(postRequest)
     }
 
+    //todo update, po kiekvieno turi buti pauzze
     private fun printReceipt() {
+
         val fullDataList = viewModel.observeFullDataList().value
-        if (fullDataList!!.size < 30 && fullDataList.size != 1) {
-            printingLastItem = true
-            printPartOfReceipt(fullDataList)
-        } else {
-            printingLastItem = false
-            val chunkedList = fullDataList.chunked(30)
-            for (x in 0 until chunkedList.size) {
-                Handler().postDelayed({
-                    if (x + 1 == chunkedList.size) {
-                        printingLastItem = true
-                    }
-                    printPartOfReceipt(chunkedList[x])
-                }, (6000 * x).toLong())
+        for(x in fullDataList!!.indices){
+            if(x >= fullDataList.size - 1 ){
+                printingLastItem = true
             }
+            printPartOfReceipt(fullDataList[x])
         }
+       // printingLastItem = true
+//        if (fullDataList!!.size < 30 && fullDataList.size != 1) {
+//            printingLastItem = true
+//            printPartOfReceipt(fullDataList)
+//        } else {
+//            printingLastItem = false
+//            val chunkedList = fullDataList.chunked(30)
+//            for (x in 0 until chunkedList.size) {
+//                Handler().postDelayed({
+//                    if (x + 1 == chunkedList.size) {
+//                        printingLastItem = true
+//                    }
+//                    printPartOfReceipt(chunkedList[x])
+//                }, (6000 * x).toLong())
+//            }
+//        }
     }
 
-    private fun printPartOfReceipt(list: List<String>) {
+    private fun printPartOfReceipt(list: Ticket) {
         e("posInfo", "print START")
         val receiptData = ReceiptData()
-        list.forEach {
+        list.listOfDataItems.forEach {
             receiptData.addEmptyRow()
             receiptData.addRow(
-                it,
-                ReceiptData.Align.LEFT,
-                ReceiptData.FontSize.SINGLE
+                it.text,
+                it.align,
+                it.fontSize
             )
         }
+
         receiptData.addEmptyRow()
-        if (printingLastItem) {
-            receiptData.addEmptyRow()
-            receiptData.addEmptyRow()
-            receiptData.addEmptyRow()
-            receiptData.addEmptyRow()
-        }
+        receiptData.addEmptyRow()
+        receiptData.addEmptyRow()
         POSHandler.getInstance().printReceipt(receiptData)
+        Thread.sleep(5000)
         e("posInfo", "print END")
     }
 
@@ -474,16 +454,35 @@ class PrintingActivity : AppCompatActivity() {
         return intentForData.toUri(Intent.URI_INTENT_SCHEME)
     }
 
-    private fun getListOfDataTEST(): MutableList<String> {
-        val listOfTestt = mutableListOf<String>()
-        listOfTestt.add("Pirma eilute be LT")
-        listOfTestt.add("Antra eilute be LT")
-        listOfTestt.add("Trecia  trumpa be LT")
-        listOfTestt.add("Ketvirta ilga eilute test test ttest  be LT")
-        listOfTestt.add("Pirma eilutė su LT")
-        listOfTestt.add("ąčęėįšųū su LT")
-        listOfTestt.add("ą č ę ė į š ų ū su LT")
-        listOfTestt.add("ą su LT")
+    private fun getListOfDataTEST(): List<Ticket> {
+        val listOfTestt = mutableListOf<Ticket>()
+        val itemOne = ArrayList<DataItem>()
+            .apply {
+                this.add(DataItem(ReceiptData.Align.RIGHT,ReceiptData.FontSize.SINGLE,"One"))
+                this.add(DataItem(ReceiptData.Align.CENTER,ReceiptData.FontSize.DOUBLE,"tWO"))
+                this.add(DataItem(ReceiptData.Align.LEFT,ReceiptData.FontSize.SINGLE,"THREE"))
+            }
+        val two = ArrayList<DataItem>()
+            .apply {
+                this.add(DataItem(ReceiptData.Align.RIGHT,ReceiptData.FontSize.SINGLE,"One"))
+                this.add(DataItem(ReceiptData.Align.CENTER,ReceiptData.FontSize.DOUBLE,"tWO"))
+                this.add(DataItem(ReceiptData.Align.LEFT,ReceiptData.FontSize.SINGLE,"THREE"))
+            }
+
+        val three = ArrayList<DataItem>()
+            .apply {
+                this.add(DataItem(ReceiptData.Align.RIGHT,ReceiptData.FontSize.SINGLE,"One"))
+                this.add(DataItem(ReceiptData.Align.CENTER,ReceiptData.FontSize.DOUBLE,"tWO"))
+                this.add(DataItem(ReceiptData.Align.LEFT,ReceiptData.FontSize.SINGLE,"THREE"))
+            }
+        val ticketOne = Ticket(itemOne)
+        val ticketTwo = Ticket(two)
+        val ticketThree = Ticket(three)
+
+        listOfTestt.add(ticketOne)
+        listOfTestt.add(ticketTwo)
+        listOfTestt.add(ticketThree)
+
         return listOfTestt
     }
 }

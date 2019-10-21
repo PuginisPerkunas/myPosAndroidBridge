@@ -8,7 +8,7 @@ import com.google.gson.reflect.TypeToken
 
 class MainViewModel : ViewModel() {
 
-    private val fullDataList = MutableLiveData<List<String>>()
+    private val fullDataList = MutableLiveData<List<Ticket>>()
     private val errorMessage = MutableLiveData<String>()
     private var isCardPay = false
     private var endpointLink = ""
@@ -26,7 +26,7 @@ class MainViewModel : ViewModel() {
         return isCardPay
     }
 
-    fun observeFullDataList(): MutableLiveData<List<String>>{
+    fun observeFullDataList(): MutableLiveData<List<Ticket>>{
         return fullDataList
     }
 
@@ -36,15 +36,15 @@ class MainViewModel : ViewModel() {
 
     fun setDataJson(ticketJson: String?) {
         if(ticketJson != null){
-            val dataType = object : TypeToken<List<String>>() {}.type
-            val dataList : List<String> = Gson().fromJson(ticketJson, dataType)
+            val dataType = object : TypeToken<List<Ticket>>() {}.type
+            val dataList : List<Ticket> = Gson().fromJson(ticketJson, dataType)
             setDataList(dataList)
         }else{
             setErrorMessage("Json was null")
         }
     }
 
-    private fun setDataList(dataList: List<String>?) {
+    private fun setDataList(dataList: List<Ticket> ?) {
         e("dataList", fullDataList.value.toString())
         fullDataList.value = dataList
     }
