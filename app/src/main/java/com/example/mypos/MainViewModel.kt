@@ -14,6 +14,8 @@ class MainViewModel : ViewModel() {
     private var endpointLink = ""
     private var amount = 0.0
 
+    private var ticketDataJson = ""
+
     fun setErrorMessage(message: String?) {
         errorMessage.value = message
     }
@@ -68,5 +70,11 @@ class MainViewModel : ViewModel() {
     fun getEndpoint(): String {
         return endpointLink
     }
+
+    fun saveDataObjectJson(ticketJson: String) {
+        ticketDataJson = ticketJson
+    }
+
+    fun getTicketDataJson() = ticketDataJson
 
 }

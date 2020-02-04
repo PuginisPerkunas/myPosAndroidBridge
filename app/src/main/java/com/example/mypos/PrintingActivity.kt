@@ -72,7 +72,22 @@ class PrintingActivity : AppCompatActivity() {
                 )
             }
         }
+        tvStatuses.setText(testUri())
+        tvStatuses.setOnLongClickListener {
+            initFackePrint(getTestBundle())
+            true
+        }
         // testUri()
+    }
+
+    private fun initFackePrint(intent: Bundle) {
+        val ticketJson = intent.getString(Constants.RECEIPT_DATA)
+        tvStatuses.text = ticketJson
+        viewModel.setIsCardPayment(intent.getBoolean(Constants.CARD_PAYMENT, false))
+        viewModel.setEndpointLink(intent.getString(Constants.ENDPOINT))
+        viewModel.setAmount(intent.getDouble(Constants.AMOUNT, 0.0))
+        viewModel.setIsCardPayment(intent.getBoolean(Constants.CARD_PAYMENT, false))
+        viewModel.setDataJson(ticketJson)
     }
 
     override fun onRequestPermissionsResult(
@@ -227,7 +242,7 @@ class PrintingActivity : AppCompatActivity() {
                         if (printingLastItem) {
                             runOnUiThread {
                                 //tvStatuses.text = description
-                               makeSuccessRequestThanClose()
+                                makeSuccessRequestThanClose()
                             }
                             // finish()
                         }
@@ -287,7 +302,7 @@ class PrintingActivity : AppCompatActivity() {
         jsonBody.put("info", "Operation done successfully")
         jsonBody.put(Constants.CARD_PAYMENT, viewModel.isCardPay())
         val requestBody = jsonBody.toString()
-        Log.e("log","makeSuccessRequestThanClose + ${viewModel.getEndpoint()}")
+        Log.e("log", "makeSuccessRequestThanClose + ${viewModel.getEndpoint()}")
         val postRequest = object : StringRequest(
             Method.POST, viewModel.getEndpoint(),
             Response.Listener { response ->
@@ -297,10 +312,12 @@ class PrintingActivity : AppCompatActivity() {
             },
             Response.ErrorListener {
                 // error
+                it.networkResponse.statusCode
                 if (it != null && it.localizedMessage != null) {
                     Log.d("Error.Response", it.localizedMessage)
                     viewModel.setErrorMessage(it.localizedMessage)
                 }
+                makeErrorCall(it.networkResponse.statusCode.toString())
             }
         ) {
             override fun getBody(): ByteArray? {
@@ -319,13 +336,41 @@ class PrintingActivity : AppCompatActivity() {
         requestQueue.add(postRequest)
     }
 
+    private fun makeErrorCall(code: String) {
+        val jsonBody = JSONObject()
+        jsonBody.put("data", viewModel.getTicketDataJson())
+        jsonBody.put("error_code", code)
+        val requestBody = jsonBody.toString()
+
+        val post = object : StringRequest(Method.POST, "https://express.artme.lt/api/pos-error",
+            Response.Listener {
+                finish()
+
+        }, Response.ErrorListener {
+                finish()
+        }) {
+            override fun getBody(): ByteArray? {
+                return try {
+                    requestBody.toByteArray()
+                } catch (e: UnsupportedEncodingException) {
+                    null
+                }
+            }
+
+            override fun getBodyContentType(): String {
+                return "application/json; charset=utf-8"
+            }
+        }
+        requestQueue.add(post)
+    }
+
 
     private fun sendError(message: String) {
         val jsonBody = JSONObject()
         jsonBody.put("status", "failure")
         jsonBody.put("info", message)
         jsonBody.put(Constants.CARD_PAYMENT, viewModel.isCardPay())
-        Log.e("log","sendError + ${viewModel.getEndpoint()}")
+        Log.e("log", "sendError + ${viewModel.getEndpoint()}")
         val requestBody = jsonBody.toString()
 
         val postRequest = object : StringRequest(
@@ -341,6 +386,7 @@ class PrintingActivity : AppCompatActivity() {
                     Log.d("Error.Response", it.localizedMessage)
                     viewModel.setErrorMessage(it.localizedMessage)
                 }
+                makeErrorCall(it.networkResponse.statusCode.toString())
             }
         ) {
             override fun getBody(): ByteArray? {
@@ -362,13 +408,13 @@ class PrintingActivity : AppCompatActivity() {
     private fun printReceipt() {
 
         val fullDataList = viewModel.observeFullDataList().value
-        for(x in fullDataList!!.indices){
-            if(x >= fullDataList.size - 1 ){
+        for (x in fullDataList!!.indices) {
+            if (x >= fullDataList.size - 1) {
                 printingLastItem = true
             }
             printPartOfReceipt(fullDataList[x])
         }
-       // printingLastItem = true
+        // printingLastItem = true
 //        if (fullDataList!!.size < 30 && fullDataList.size != 1) {
 //            printingLastItem = true
 //            printPartOfReceipt(fullDataList)
@@ -422,6 +468,7 @@ class PrintingActivity : AppCompatActivity() {
     private fun checkForIncomingExtras(extras: Bundle) {
         if (extras.getString(Constants.RECEIPT_DATA) != null) {
             val ticketJson = intent.getStringExtra(Constants.RECEIPT_DATA)
+            viewModel.saveDataObjectJson(ticketJson)
             tvStatuses.text = ticketJson
             viewModel.setIsCardPayment(intent.getBooleanExtra(Constants.CARD_PAYMENT, false))
             viewModel.setEndpointLink(intent.getStringExtra(Constants.ENDPOINT))
@@ -438,6 +485,26 @@ class PrintingActivity : AppCompatActivity() {
                 == PackageManager.PERMISSION_GRANTED)
     }
 
+    fun getTestBundle(): Bundle {
+        val bundle = Bundle()
+
+        val listOfData = getListOfDataTEST()
+        val listGson = Gson().toJson(listOfData)
+        Log.e("jsonExample", listGson)
+
+        bundle.putString(Constants.RECEIPT_DATA, listGson)
+        bundle.putBoolean(Constants.CARD_PAYMENT, true)
+        bundle.putDouble(Constants.AMOUNT, 00.01)
+        bundle.putString(
+            Constants.ENDPOINT,
+            "https://express.artme.lt/api/orders/paid?selected_payment=BANK&card_payment=true&order_id=136"
+        )
+        // intentForData.putExtra(Constants.ENDPOINT_POST_DATA, "endpointPostData")
+        //Log.e("genUri", intentForData.toUri(Intent.URI_INTENT_SCHEME))
+
+        return bundle
+    }
+
     private fun testUri(): String {
         val listOfData = getListOfDataTEST()
         val listGson = Gson().toJson(listOfData)
@@ -446,9 +513,12 @@ class PrintingActivity : AppCompatActivity() {
         intentForData.addCategory(Intent.CATEGORY_DEFAULT)
         intentForData.addCategory(Intent.CATEGORY_BROWSABLE)
         intentForData.putExtra(Constants.RECEIPT_DATA, listGson)
-        intentForData.putExtra(Constants.CARD_PAYMENT, false)
+        intentForData.putExtra(Constants.CARD_PAYMENT, true)
         intentForData.putExtra(Constants.AMOUNT, 00.01)
-        intentForData.putExtra(Constants.ENDPOINT, "endpointLinkas")
+        intentForData.putExtra(
+            Constants.ENDPOINT,
+            "https://express.artme.lt/api/orders/paid?selected_payment=BANK&card_payment=true&order_id=136"
+        )
         // intentForData.putExtra(Constants.ENDPOINT_POST_DATA, "endpointPostData")
         Log.e("genUri", intentForData.toUri(Intent.URI_INTENT_SCHEME))
         return intentForData.toUri(Intent.URI_INTENT_SCHEME)
@@ -458,30 +528,30 @@ class PrintingActivity : AppCompatActivity() {
         val listOfTestt = mutableListOf<Ticket>()
         val itemOne = ArrayList<DataItem>()
             .apply {
-                this.add(DataItem(ReceiptData.Align.RIGHT,ReceiptData.FontSize.SINGLE,"One"))
-                this.add(DataItem(ReceiptData.Align.CENTER,ReceiptData.FontSize.DOUBLE,"tWO"))
-                this.add(DataItem(ReceiptData.Align.LEFT,ReceiptData.FontSize.SINGLE,"THREE"))
+                this.add(DataItem(ReceiptData.Align.RIGHT, ReceiptData.FontSize.SINGLE, "One"))
+                this.add(DataItem(ReceiptData.Align.CENTER, ReceiptData.FontSize.DOUBLE, "tWO"))
+                this.add(DataItem(ReceiptData.Align.LEFT, ReceiptData.FontSize.SINGLE, "THREE"))
             }
-        val two = ArrayList<DataItem>()
-            .apply {
-                this.add(DataItem(ReceiptData.Align.RIGHT,ReceiptData.FontSize.SINGLE,"One"))
-                this.add(DataItem(ReceiptData.Align.CENTER,ReceiptData.FontSize.DOUBLE,"tWO"))
-                this.add(DataItem(ReceiptData.Align.LEFT,ReceiptData.FontSize.SINGLE,"THREE"))
-            }
-
-        val three = ArrayList<DataItem>()
-            .apply {
-                this.add(DataItem(ReceiptData.Align.RIGHT,ReceiptData.FontSize.SINGLE,"One"))
-                this.add(DataItem(ReceiptData.Align.CENTER,ReceiptData.FontSize.DOUBLE,"tWO"))
-                this.add(DataItem(ReceiptData.Align.LEFT,ReceiptData.FontSize.SINGLE,"THREE"))
-            }
+//        val two = ArrayList<DataItem>()
+//            .apply {
+//                this.add(DataItem(ReceiptData.Align.RIGHT,ReceiptData.FontSize.SINGLE,"One"))
+//                this.add(DataItem(ReceiptData.Align.CENTER,ReceiptData.FontSize.DOUBLE,"tWO"))
+//                this.add(DataItem(ReceiptData.Align.LEFT,ReceiptData.FontSize.SINGLE,"THREE"))
+//            }
+//
+//        val three = ArrayList<DataItem>()
+//            .apply {
+//                this.add(DataItem(ReceiptData.Align.RIGHT,ReceiptData.FontSize.SINGLE,"One"))
+//                this.add(DataItem(ReceiptData.Align.CENTER,ReceiptData.FontSize.DOUBLE,"tWO"))
+//                this.add(DataItem(ReceiptData.Align.LEFT,ReceiptData.FontSize.SINGLE,"THREE"))
+//            }
         val ticketOne = Ticket(itemOne)
-        val ticketTwo = Ticket(two)
-        val ticketThree = Ticket(three)
+//        val ticketTwo = Ticket(two)
+//        val ticketThree = Ticket(three)
 
         listOfTestt.add(ticketOne)
-        listOfTestt.add(ticketTwo)
-        listOfTestt.add(ticketThree)
+//        listOfTestt.add(ticketTwo)
+//        listOfTestt.add(ticketThree)
 
         return listOfTestt
     }
