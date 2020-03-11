@@ -1,5 +1,5 @@
 <resources>
-    <string name="app_name">myPos3</string>
+    <string name="app_name">MyPos_MVI</string>
     <string name="connect">Connect</string>
     <string name="permission_needed">Permission needed</string>
     <string name="permission_needed_message">Permission needed to operate</string>

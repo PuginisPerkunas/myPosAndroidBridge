@@ -27,6 +27,8 @@ import org.jetbrains.anko.toast
 import org.json.JSONObject
 import java.io.UnsupportedEncodingException
 
+const val ERROR_LINK = "https://express-stag.artme.lt/pos-error"
+const val ERROR_LINK_ADMIN = "https://admin.delivery.picagroup.lt/pos-error"
 
 class PrintingActivity : AppCompatActivity() {
 
@@ -36,6 +38,10 @@ class PrintingActivity : AppCompatActivity() {
     }
     val viewModel: MainViewModel by lazy {
         ViewModelProviders.of(this).get(MainViewModel::class.java)
+    }
+
+    override fun onBackPressed() {
+
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -308,7 +314,7 @@ class PrintingActivity : AppCompatActivity() {
             Response.Listener { response ->
                 // response
                 Log.d("Response", response)
-                finish()
+                this.moveTaskToBack(true);
             },
             Response.ErrorListener {
                 // error
@@ -342,12 +348,12 @@ class PrintingActivity : AppCompatActivity() {
         jsonBody.put("error_code", code)
         val requestBody = jsonBody.toString()
 
-        val post = object : StringRequest(Method.POST, "https://express.artme.lt/api/pos-error",
+        val post = object : StringRequest(Method.POST, ERROR_LINK_ADMIN,
             Response.Listener {
-                finish()
+                this.moveTaskToBack(true);
 
         }, Response.ErrorListener {
-                finish()
+                this.moveTaskToBack(true);
         }) {
             override fun getBody(): ByteArray? {
                 return try {
@@ -378,7 +384,7 @@ class PrintingActivity : AppCompatActivity() {
             Response.Listener { response ->
                 // response
                 Log.d("Response", response)
-                finish()
+                this.moveTaskToBack(true);
             },
             Response.ErrorListener {
                 // error
