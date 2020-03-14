@@ -1,4 +1,5 @@
 package com.example.mypos
+/*
 
 import android.Manifest
 import android.content.Intent
@@ -562,3 +563,4 @@ class PrintingActivity : AppCompatActivity() {
         return listOfTestt
     }
 }
+*/

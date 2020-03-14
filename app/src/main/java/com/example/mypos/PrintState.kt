@@ -6,34 +6,43 @@ data class PrintState(
     val cardPayment: Boolean = false,
     val amount: Double = 0.0,
     val endpointLink: String = ""
-): State<PrintState, Event> {
+) : State<PrintState, Event> {
     override fun reduce(event: Event): PrintState {
-        return when(event){
+        return when (event) {
             Event.EffectHandled -> copy(effect = null)
             Event.PermissionRequestNeeded -> copy(effect = Effect.RequestPermission)
             Event.PosConnectionNeeded -> copy(effect = Effect.ConnectPosAndSubscribe)
             Event.PosConnected -> copy(effect = Effect.CollectIncomeData)
             is Event.ErrorHappened -> copy(effect = Effect.ThrowErrorMessageAndClose(event.message))
             is Event.DataCollected -> {
-                event.endpointLink?.let { endpoint ->
-                    if(endpoint.isNotEmpty()){
-                        if(event.amount > 0.0){
-                            if(event.dataList.isNotEmpty()){
+                if (!event.endpointLink.isNullOrEmpty()) {
+                    if (event.dataList.isNotEmpty()) {
+                        if (!event.cardPayment) {
+                            copy(
+                                effect = Effect.PrintIncomeReceipt,
+                                dataList = event.dataList,
+                                cardPayment = event.cardPayment,
+                                amount = event.amount,
+                                endpointLink = event.endpointLink
+                            )
+                        } else {
+                            if (event.amount > 0.0) {
                                 copy(
-                                    effect = if(event.cardPayment) Effect.StartCardPayment else Effect.PrintIncomeReceipt,
+                                    effect = Effect.StartCardPayment,
                                     dataList = event.dataList,
                                     cardPayment = event.cardPayment,
                                     amount = event.amount,
-                                    endpointLink = endpoint
+                                    endpointLink = event.endpointLink
                                 )
-                            } else copy(effect = Effect.ThrowErrorMessageAndClose("Produktu sarasas tuscias!"))
-                        } else copy(effect = Effect.ThrowErrorMessageAndClose("Kaina negali buti 0!"))
-                    } else copy(effect = Effect.ThrowErrorMessageAndClose("Baigties nuoroda nebu gauta!"))
-                } ?: copy(effect = Effect.ThrowErrorMessageAndClose("Baigties nuoroda nebu gauta!"))
+                            } else copy(effect = Effect.ThrowErrorMessageAndClose("Kaina negali buti 0 atsiskaitant kortele!"))
+                        }
+                    } else copy(effect = Effect.ThrowErrorMessageAndClose("Produktu sarasas tuscias!"))
+                } else copy(effect = Effect.ThrowErrorMessageAndClose("Baigties nuoroda nebuvo gauta!"))
             }
             Event.TransactionCompleted -> copy(effect = Effect.PrintIncomeReceipt)
             Event.AllPrintingDone -> copy(effect = Effect.SendConfirmAndClose)
             is Event.ErrorCallRequested -> copy(effect = Effect.SendErrorToServer(event.message))
+            Event.PosRequestRetry -> copy(effect = Effect.CollectIncomeData)
         }
     }
 }
@@ -55,6 +64,7 @@ sealed class Event {
     object PosConnected : Event()
     object TransactionCompleted : Event()
     object AllPrintingDone : Event()
+    object PosRequestRetry : Event()
 }
 
 sealed class Effect {

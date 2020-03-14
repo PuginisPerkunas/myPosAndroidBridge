@@ -6,10 +6,12 @@ import androidx.appcompat.app.AppCompatActivity
 import android.os.Bundle
 import android.os.Handler
 import android.util.Log
+import android.view.View
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import com.android.volley.RequestQueue
 import com.android.volley.Response
+import com.android.volley.VolleyLog
 import com.android.volley.toolbox.StringRequest
 import com.android.volley.toolbox.Volley
 import com.google.gson.Gson
@@ -19,6 +21,7 @@ import kotlinx.android.synthetic.main.activity_print.*
 import org.json.JSONObject
 import java.io.UnsupportedEncodingException
 
+private const val FIRST_PRINT_DELAY_DEFAULT = 1000L
 private const val PRINTER_WAIT_DELAY_DEFAULT = 5000L
 private const val PRINTER_WAIT_DELAY_LONG = 10000L
 private const val BACK_BUTTON_DELAY = 120000L
@@ -49,14 +52,15 @@ class PrintActivity : AppCompatActivity() {
         setContentView(R.layout.activity_print)
         POSHandler.setApplicationContext(this)
         POSHandler.setLanguage(Language.LITHUANIAN)
+        VolleyLog.DEBUG = true
         subscribeMachine()
     }
 
     override fun onResume() {
         super.onResume()
         if (checkCoarsePermission()) {
-            machine.transition(Event.PosConnectionNeeded)
             //Have permission, we can continue
+            machine.transition(Event.PosConnectionNeeded)
         } else {
             //Need permission
             machine.transition(Event.PermissionRequestNeeded)
@@ -81,6 +85,7 @@ class PrintActivity : AppCompatActivity() {
     }
 
     override fun onBackPressed() {
+        //on click closes app after 2 min
         backHandler.removeCallbacks(backRunnable)
         backHandler.postDelayed(
             backRunnable,
@@ -89,7 +94,8 @@ class PrintActivity : AppCompatActivity() {
     }
 
     private fun subscribeMachine() {
-        machine.subscribe { boundState, newState ->
+        machine.subscribe { _, newState ->
+            newState.effect?.let { Log.e("currentState", newState.effect::class.java.simpleName) }
             when (val effect = newState.effect) {
                 Effect.RequestPermission -> {
                     ActivityCompat.requestPermissions(
@@ -100,10 +106,19 @@ class PrintActivity : AppCompatActivity() {
                     machine.transition(Event.EffectHandled)
                 }
                 Effect.ConnectPosAndSubscribe -> {
-                    POSHandler.getInstance().connectDevice(this)
-                    POSHandler.getInstance().setPOSReadyListener {
-                        textView.text = "Prisijungta, tikrinami duomenys..."
-                        machine.transition(Event.PosConnected)
+                    if (POSHandler.getInstance().isConnected) {
+                        textView.text = "Pos jau prijungtas, tikrinami duomenys..."
+                        Handler().postDelayed({
+                            machine.transition(Event.PosConnected)
+                        }, PRINTER_WAIT_DELAY_DEFAULT)
+                    } else {
+                        POSHandler.getInstance().connectDevice(this)
+                        POSHandler.getInstance().setPOSReadyListener {
+                            textView.text = "Tikrinami duomenys..."
+                            Handler().postDelayed({
+                                machine.transition(Event.PosConnected)
+                            }, PRINTER_WAIT_DELAY_DEFAULT)
+                        }
                     }
                     POSHandler.getInstance().setPOSInfoListener(object : POSInfoListener {
                         override fun onTransactionComplete(transactionData: TransactionData?) {
@@ -121,6 +136,9 @@ class PrintActivity : AppCompatActivity() {
                             status: Int,
                             description: String?
                         ) {
+                            Log.e("onPOSInfoReceived", "command $command")
+                            Log.e("onPOSInfoReceived", "status $status")
+                            Log.e("onPOSInfoReceived", "description $description")
                             when (status) {
                                 POSHandler.POS_STATUS_SUCCESS_PRINT_RECEIPT -> {
                                     if (printingLastReciept) {
@@ -129,6 +147,42 @@ class PrintActivity : AppCompatActivity() {
                                             machine.transition(Event.AllPrintingDone)
                                         }
                                     }
+                                }
+                                POSHandler.POS_STATUS_DOWNLOADING_CERTIFICATES_IN_PROGRESS -> {
+                                    if (printingLastReciept) {
+                                        runOnUiThread {
+                                            textView.text = "Atsiunciami sertifikatai..."
+                                            machine.transition(Event.EffectHandled)
+                                        }
+                                    }
+                                }
+                                POSHandler.POS_STATUS_DOWNLOADING_CERTIFICATES_COMPLETED -> {
+                                    if (printingLastReciept) {
+                                        runOnUiThread {
+                                            textView.text = "Sertifikatai atsiusti, tesiama..."
+                                            machine.transition(Event.EffectHandled)
+                                        }
+                                    }
+                                }
+                                POSHandler.POS_STATUS_NO_PAPER -> {
+                                    if (printingLastReciept) {
+                                        runOnUiThread {
+                                            textView.text = "Pakeiskite spauzdinimo popieriu!"
+                                            enableRetryButton()
+                                            machine.transition(Event.EffectHandled)
+                                        }
+                                    }
+                                }
+                                POSHandler.POS_STATUS_INVALID_PIN -> {
+                                    if (printingLastReciept) {
+                                        runOnUiThread {
+                                            textView.text = "Netinkamas kodas!"
+                                            enableRetryButton()
+                                            machine.transition(Event.EffectHandled)
+                                        }
+                                    }
+                                }
+                                POSHandler.POS_STATUS_TERMINAL_BUSY -> {/* ignore this case */
                                 }
                                 else -> {
                                     runOnUiThread {
@@ -148,6 +202,10 @@ class PrintActivity : AppCompatActivity() {
                         val endpointLink = intent.getStringExtra(Constants.ENDPOINT)
                         val amount = intent.getDoubleExtra(Constants.AMOUNT, 0.0)
                         // Pass data for machine to continue
+                        Log.e("loger", "dataJson $dataJson")
+                        Log.e("loger", "isCardPayment $isCardPayment")
+                        Log.e("loger", "endpointLink $endpointLink")
+                        Log.e("loger", "amount $amount")
                         machine.transition(
                             Event.DataCollected(
                                 dataList,
@@ -176,13 +234,16 @@ class PrintActivity : AppCompatActivity() {
                     machine.transition(Event.EffectHandled)
                 }
                 Effect.PrintIncomeReceipt -> {
-                    val lastIndexInDataList = newState.dataList.lastIndex
-                    newState.dataList.mapIndexed { index, ticket ->
-                        if (index == lastIndexInDataList) {
-                            printingLastReciept = true
+                    textView.text = "Spauzdinama..."
+                    Handler().postDelayed({
+                        val lastIndexInDataList = newState.dataList.lastIndex
+                        newState.dataList.mapIndexed { index, ticket ->
+                            if (index == lastIndexInDataList) {
+                                printingLastReciept = true
+                            }
+                            printPartOfReceipt(ticket, index, lastIndexInDataList)
                         }
-                        printPartOfReceipt(ticket)
-                    }
+                    }, FIRST_PRINT_DELAY_DEFAULT)
                     machine.transition(Event.EffectHandled)
                 }
                 Effect.SendConfirmAndClose -> {
@@ -216,12 +277,22 @@ class PrintActivity : AppCompatActivity() {
         }.disposedBy(this)
     }
 
+    private fun enableRetryButton() {
+        retry.visibility = View.VISIBLE
+        retry.isEnabled = true
+        retry.setOnClickListener {
+            retry.visibility = View.INVISIBLE
+            retry.isEnabled = false
+            machine.transition(Event.PosRequestRetry)
+        }
+    }
+
     private fun checkCoarsePermission(): Boolean {
         return (ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_COARSE_LOCATION)
                 == PackageManager.PERMISSION_GRANTED)
     }
 
-    private fun printPartOfReceipt(ticket: Ticket) {
+    private fun printPartOfReceipt(ticket: Ticket, currentItemIndex: Int, lastItemIndex: Int) {
         val receiptData = ReceiptData()
         ticket.listOfDataItems.forEach {
             receiptData.addEmptyRow()
@@ -235,8 +306,25 @@ class PrintActivity : AppCompatActivity() {
         receiptData.addEmptyRow()
         receiptData.addEmptyRow()
         receiptData.addEmptyRow()
-        POSHandler.getInstance().printReceipt(receiptData)
-        Thread.sleep(PRINTER_WAIT_DELAY_DEFAULT)
+        // Tricky part, need to check connection and busy status, because of
+        // sometimes, in beginning getting that pos is connected, but in real life it's not and
+        // because of this getting java.io.IOException: Broken pipe error from android (and no, try
+        // catch not working here because its coming like warning).
+        // So additional check here helps prevent that situation, BUT increase wait time
+        if (POSHandler.getInstance().isConnected) {
+            if (!POSHandler.getInstance().isTerminalBusy) {
+                POSHandler.getInstance().printReceipt(receiptData)
+                Thread.sleep(PRINTER_WAIT_DELAY_DEFAULT)
+            } else {
+                Handler().postDelayed({
+                    POSHandler.getInstance().printReceipt(receiptData)
+                    Thread.sleep(PRINTER_WAIT_DELAY_DEFAULT)
+                }, PRINTER_WAIT_DELAY_DEFAULT)
+            }
+        } else {
+            printingLastReciept = false
+            machine.transition(Event.PosConnectionNeeded)
+        }
     }
 
     private fun sendDataToServer(
@@ -254,11 +342,11 @@ class PrintActivity : AppCompatActivity() {
             },
             Response.ErrorListener {
                 // error
-                if(!isFalbackCall){
+                if (!isFalbackCall) {
                     it.networkResponse.statusCode
                     textView.text = it.localizedMessage ?: "Klaida susijusi su serveriu..."
                     machine.transition(Event.ErrorCallRequested(it.networkResponse.statusCode.toString()))
-                }else finish()
+                } else finish()
             }
         ) {
             override fun getBody(): ByteArray? {
