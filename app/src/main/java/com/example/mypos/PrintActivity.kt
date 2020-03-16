@@ -1,6 +1,13 @@
 package com.example.mypos
 
 import android.Manifest
+import android.bluetooth.BluetoothAdapter
+import android.bluetooth.BluetoothDevice
+import android.bluetooth.BluetoothProfile
+import android.content.BroadcastReceiver
+import android.content.Context
+import android.content.Intent
+import android.content.IntentFilter
 import android.content.pm.PackageManager
 import androidx.appcompat.app.AppCompatActivity
 import android.os.Bundle
@@ -18,6 +25,7 @@ import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
 import com.mypos.slavesdk.*
 import kotlinx.android.synthetic.main.activity_print.*
+import org.jetbrains.anko.bluetoothManager
 import org.json.JSONObject
 import java.io.UnsupportedEncodingException
 
@@ -47,17 +55,46 @@ class PrintActivity : AppCompatActivity() {
         )
     }
 
+    //The BroadcastReceiver that listens for bluetooth broadcasts
+    private val mReceiver: BroadcastReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            val action = intent?.action
+            val device: BluetoothDevice? = intent?.getParcelableExtra(BluetoothDevice.EXTRA_DEVICE)
+            Log.e("bluetoothDevice", device?.name) //myPOS_D210_518
+            when {
+                action.equals(BluetoothDevice.ACTION_FOUND) -> {
+                    // machine.transition(Event.ConfirmThatDeviceIsReallyConnected(device?.name?.contains("myPOS") ?: false))
+                }
+                action.equals(BluetoothDevice.ACTION_ACL_DISCONNECTED) -> {
+                    // machine.transition(Event.ConfirmThatDeviceIsReallyConnected(false))
+                }
+            }
+        }
+
+    }
+
+    private val intentFilter = IntentFilter()
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_print)
         POSHandler.setApplicationContext(this)
         POSHandler.setLanguage(Language.LITHUANIAN)
         VolleyLog.DEBUG = true
+        intentFilter.addAction(BluetoothDevice.ACTION_ACL_CONNECTED)
+        intentFilter.addAction(BluetoothDevice.ACTION_ACL_DISCONNECT_REQUESTED)
+        intentFilter.addAction(BluetoothDevice.ACTION_ACL_DISCONNECTED)
         subscribeMachine()
+    }
+
+    override fun onPause() {
+        this.unregisterReceiver(mReceiver)
+        super.onPause()
     }
 
     override fun onResume() {
         super.onResume()
+        this.registerReceiver(mReceiver, intentFilter)
         if (checkCoarsePermission()) {
             //Have permission, we can continue
             machine.transition(Event.PosConnectionNeeded)
@@ -112,25 +149,10 @@ class PrintActivity : AppCompatActivity() {
                             machine.transition(Event.PosConnected)
                         }, PRINTER_WAIT_DELAY_DEFAULT)
                     } else {
-                        POSHandler.getInstance().connectDevice(this)
-                        POSHandler.getInstance().setPOSReadyListener {
-                            textView.text = "Tikrinami duomenys..."
-                            Handler().postDelayed({
-                                machine.transition(Event.PosConnected)
-                            }, PRINTER_WAIT_DELAY_DEFAULT)
-                        }
+                        subscribePosReady()
                     }
                     POSHandler.getInstance().setPOSInfoListener(object : POSInfoListener {
-                        override fun onTransactionComplete(transactionData: TransactionData?) {
-                            if (transactionData != null) {
-                                runOnUiThread {
-                                    Handler().postDelayed({
-                                        machine.transition(Event.TransactionCompleted)
-                                    }, PRINTER_WAIT_DELAY_LONG)
-                                }
-                            }
-                        }
-
+                        override fun onTransactionComplete(transactionData: TransactionData?) {}
                         override fun onPOSInfoReceived(
                             command: Int,
                             status: Int,
@@ -141,7 +163,7 @@ class PrintActivity : AppCompatActivity() {
                             Log.e("onPOSInfoReceived", "description $description")
                             when (status) {
                                 POSHandler.POS_STATUS_SUCCESS_PRINT_RECEIPT -> {
-                                    if (printingLastReciept) {
+                                    if (printingLastReciept && !newState.cardPayment) {
                                         runOnUiThread {
                                             textView.text = "Siunciamas patvirtinimas"
                                             machine.transition(Event.AllPrintingDone)
@@ -182,7 +204,36 @@ class PrintActivity : AppCompatActivity() {
                                         }
                                     }
                                 }
-                                POSHandler.POS_STATUS_TERMINAL_BUSY -> {/* ignore this case */
+                                POSHandler.POS_STATUS_PENDING_USER_INTERACTION -> {
+                                    runOnUiThread {
+                                        textView.text = "Laukiamas apmokejimo patvirtinimas..."
+                                        machine.transition(Event.EffectHandled)
+                                    }
+                                }
+                                POSHandler.POS_STATUS_PROCESSING -> {
+                                    runOnUiThread {
+                                        textView.text = "Apdorojama mokejimo informacija..."
+                                        machine.transition(Event.EffectHandled)
+                                    }
+                                }
+                                POSHandler.POS_STATUS_SUCCESS_PURCHASE -> {
+                                    runOnUiThread {
+                                        if (newState.dataList.size == 1 && newState.dataList[0].listOfDataItems[0].text == " ") {
+                                            textView.text = "Siunciamas patvirtinimas"
+                                            machine.transition(Event.AllPrintingDone)
+                                        } else {
+                                            textView.text = "Apdorojama, laukite"
+                                            Handler().postDelayed({
+                                                machine.transition(Event.TransactionCompleted)
+                                            }, PRINTER_WAIT_DELAY_LONG)
+                                        }
+                                    }
+                                }
+                                POSHandler.POS_STATUS_SUCCESS -> {
+                                    /* ignore this case */
+                                }
+                                POSHandler.POS_STATUS_TERMINAL_BUSY -> {
+                                    /* ignore this case */
                                 }
                                 else -> {
                                     runOnUiThread {
@@ -196,11 +247,12 @@ class PrintActivity : AppCompatActivity() {
                     machine.transition(Event.EffectHandled)
                 }
                 Effect.CollectIncomeData -> {
+                    Log.e("incomingDataRaw", intent.toUri(Intent.URI_INTENT_SCHEME))
                     intent.extras?.getString(Constants.RECEIPT_DATA)?.let { dataJson ->
                         val dataList: List<Ticket> = Gson().fromJson(dataJson, dataType)
                         val isCardPayment = intent.getBooleanExtra(Constants.CARD_PAYMENT, false)
                         val endpointLink = intent.getStringExtra(Constants.ENDPOINT)
-                        val amount = intent.getDoubleExtra(Constants.AMOUNT, 0.0)
+                        val amount = intent.getStringExtra(Constants.AMOUNT)
                         // Pass data for machine to continue
                         Log.e("loger", "dataJson $dataJson")
                         Log.e("loger", "isCardPayment $isCardPayment")
@@ -226,8 +278,9 @@ class PrintActivity : AppCompatActivity() {
                     machine.transition(Event.EffectHandled)
                 }
                 Effect.StartCardPayment -> {
+                    Log.e("amountBeforeCardPayment", newState.amount)
                     POSHandler.getInstance().purchase(
-                        newState.amount.toString(),
+                        newState.amount,
                         "999999999",
                         POSHandler.RECEIPT_PRINT_AFTER_CONFIRMATION
                     )
@@ -241,7 +294,7 @@ class PrintActivity : AppCompatActivity() {
                             if (index == lastIndexInDataList) {
                                 printingLastReciept = true
                             }
-                            printPartOfReceipt(ticket, index, lastIndexInDataList)
+                            printPartOfReceipt(ticket)
                         }
                     }, FIRST_PRINT_DELAY_DEFAULT)
                     machine.transition(Event.EffectHandled)
@@ -277,6 +330,16 @@ class PrintActivity : AppCompatActivity() {
         }.disposedBy(this)
     }
 
+    private fun subscribePosReady() {
+        POSHandler.getInstance().connectDevice(this)
+        POSHandler.getInstance().setPOSReadyListener {
+            textView.text = "Tikrinami duomenys..."
+            Handler().postDelayed({
+                machine.transition(Event.PosConnected)
+            }, PRINTER_WAIT_DELAY_DEFAULT)
+        }
+    }
+
     private fun enableRetryButton() {
         retry.visibility = View.VISIBLE
         retry.isEnabled = true
@@ -292,7 +355,7 @@ class PrintActivity : AppCompatActivity() {
                 == PackageManager.PERMISSION_GRANTED)
     }
 
-    private fun printPartOfReceipt(ticket: Ticket, currentItemIndex: Int, lastItemIndex: Int) {
+    private fun printPartOfReceipt(ticket: Ticket) {
         val receiptData = ReceiptData()
         ticket.listOfDataItems.forEach {
             receiptData.addEmptyRow()

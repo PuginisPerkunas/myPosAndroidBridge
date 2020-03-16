@@ -4,9 +4,9 @@ data class PrintState(
     val effect: Effect? = null,
     val dataList: List<Ticket> = emptyList(),
     val cardPayment: Boolean = false,
-    val amount: Double = 0.0,
+    val amount: String = "",
     val endpointLink: String = ""
-) : State<PrintState, Event> {
+    ) : State<PrintState, Event> {
     override fun reduce(event: Event): PrintState {
         return when (event) {
             Event.EffectHandled -> copy(effect = null)
@@ -22,16 +22,16 @@ data class PrintState(
                                 effect = Effect.PrintIncomeReceipt,
                                 dataList = event.dataList,
                                 cardPayment = event.cardPayment,
-                                amount = event.amount,
+                                amount = "",
                                 endpointLink = event.endpointLink
                             )
                         } else {
-                            if (event.amount > 0.0) {
+                            if (!event.amount.isNullOrEmpty()) {
                                 copy(
                                     effect = Effect.StartCardPayment,
                                     dataList = event.dataList,
                                     cardPayment = event.cardPayment,
-                                    amount = event.amount,
+                                    amount = event.amount.replace("'",""),
                                     endpointLink = event.endpointLink
                                 )
                             } else copy(effect = Effect.ThrowErrorMessageAndClose("Kaina negali buti 0 atsiskaitant kortele!"))
@@ -54,10 +54,11 @@ sealed class Event {
         val dataList: List<Ticket>,
         val cardPayment: Boolean,
         val endpointLink: String?,
-        val amount: Double
+        val amount: String?
     ) : Event()
 
     class ErrorCallRequested(val message: String) : Event()
+
     object EffectHandled : Event()
     object PermissionRequestNeeded : Event()
     object PosConnectionNeeded : Event()
