@@ -8,9 +8,38 @@
   "client": [
     {
       "client_info": {
-        "mobilesdk_app_id": "1:222968200649:android:2f9f480f38911d09",
+        "mobilesdk_app_id": "1:222968200649:android:22958f762ab9af4a917c18",
         "android_client_info": {
-          "package_name": "com.example.mypos"
+          "package_name": "com.artme.mypos"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "222968200649-vmq3188uoa1h49he1e58is9ssup7rv2q.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAOUtRcLpHDkjxbFASWMKlL2PseaY2Uh0E"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "222968200649-vmq3188uoa1h49he1e58is9ssup7rv2q.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:222968200649:android:7b1be7b0071a375b917c18",
+        "android_client_info": {
+          "package_name": "com.artme.mypos.stage"
         }
       },
       "oauth_client": [

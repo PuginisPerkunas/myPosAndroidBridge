@@ -29,7 +29,6 @@
             </intent-filter>
             <intent-filter>
                 <action android:name="com.example.mypos" />
-
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
             </intent-filter>

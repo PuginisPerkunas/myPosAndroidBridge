@@ -1,19 +1,15 @@
 package com.example.mypos
 
 import android.Manifest
-import android.bluetooth.BluetoothAdapter
 import android.bluetooth.BluetoothDevice
-import android.bluetooth.BluetoothProfile
-import android.content.BroadcastReceiver
-import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.content.pm.PackageManager
-import androidx.appcompat.app.AppCompatActivity
 import android.os.Bundle
 import android.os.Handler
 import android.util.Log
 import android.view.View
+import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import com.android.volley.RequestQueue
@@ -21,11 +17,11 @@ import com.android.volley.Response
 import com.android.volley.VolleyLog
 import com.android.volley.toolbox.StringRequest
 import com.android.volley.toolbox.Volley
+import com.google.firebase.analytics.FirebaseAnalytics
 import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
 import com.mypos.slavesdk.*
 import kotlinx.android.synthetic.main.activity_print.*
-import org.jetbrains.anko.bluetoothManager
 import org.json.JSONObject
 import java.io.UnsupportedEncodingException
 
@@ -33,8 +29,6 @@ private const val FIRST_PRINT_DELAY_DEFAULT = 1000L
 private const val PRINTER_WAIT_DELAY_DEFAULT = 5000L
 private const val PRINTER_WAIT_DELAY_LONG = 10000L
 private const val BACK_BUTTON_DELAY = 120000L
-private const val ERROR_LINK_STAGE = "https://express-stag.artme.lt/pos-error"
-private const val ERROR_LINK_PROD = "https://admin.delivery.picagroup.lt/pos-error"
 
 class PrintActivity : AppCompatActivity() {
 
@@ -55,29 +49,16 @@ class PrintActivity : AppCompatActivity() {
         )
     }
 
-    //The BroadcastReceiver that listens for bluetooth broadcasts
-    private val mReceiver: BroadcastReceiver = object : BroadcastReceiver() {
-        override fun onReceive(context: Context?, intent: Intent?) {
-            val action = intent?.action
-            val device: BluetoothDevice? = intent?.getParcelableExtra(BluetoothDevice.EXTRA_DEVICE)
-            Log.e("bluetoothDevice", device?.name) //myPOS_D210_518
-            when {
-                action.equals(BluetoothDevice.ACTION_FOUND) -> {
-                    // machine.transition(Event.ConfirmThatDeviceIsReallyConnected(device?.name?.contains("myPOS") ?: false))
-                }
-                action.equals(BluetoothDevice.ACTION_ACL_DISCONNECTED) -> {
-                    // machine.transition(Event.ConfirmThatDeviceIsReallyConnected(false))
-                }
-            }
-        }
-
-    }
+    private lateinit var firebaseAnalytics: FirebaseAnalytics
+    private val firebaseAnalyticsBundle = Bundle()
 
     private val intentFilter = IntentFilter()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_print)
+        firebaseAnalytics = FirebaseAnalytics.getInstance(this)
+        firebaseAnalyticsBundle.putString(FirebaseAnalytics.Param.ITEM_NAME, getString(R.string.app_name))
         POSHandler.setApplicationContext(this)
         POSHandler.setLanguage(Language.LITHUANIAN)
         VolleyLog.DEBUG = true
@@ -87,14 +68,8 @@ class PrintActivity : AppCompatActivity() {
         subscribeMachine()
     }
 
-    override fun onPause() {
-        this.unregisterReceiver(mReceiver)
-        super.onPause()
-    }
-
     override fun onResume() {
         super.onResume()
-        this.registerReceiver(mReceiver, intentFilter)
         if (checkCoarsePermission()) {
             //Have permission, we can continue
             machine.transition(Event.PosConnectionNeeded)
@@ -104,11 +79,17 @@ class PrintActivity : AppCompatActivity() {
         }
     }
 
+    override fun onPause() {
+        firebaseAnalytics.logEvent(FirebaseAnalytics.Event.SELECT_CONTENT, firebaseAnalyticsBundle)
+        super.onPause()
+    }
+
     override fun onRequestPermissionsResult(
         requestCode: Int,
         permissions: Array<out String>,
         grantResults: IntArray
     ) {
+        firebaseAnalyticsBundle.putString(FirebaseAnalytics.Param.ITEM_NAME, "permission_check")
         if (requestCode == Constants.MY_PERMISSIONS_REQUEST_LOCATION) {
             if (grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
                 //Permission ok
@@ -123,6 +104,7 @@ class PrintActivity : AppCompatActivity() {
 
     override fun onBackPressed() {
         //on click closes app after 2 min
+        firebaseAnalyticsBundle.putString(FirebaseAnalytics.Param.ITEM_NAME, "back_press")
         backHandler.removeCallbacks(backRunnable)
         backHandler.postDelayed(
             backRunnable,
@@ -131,10 +113,12 @@ class PrintActivity : AppCompatActivity() {
     }
 
     private fun subscribeMachine() {
+        firebaseAnalyticsBundle.putString(FirebaseAnalytics.Param.ITEM_NAME, "machine_subscribe")
         machine.subscribe { _, newState ->
             newState.effect?.let { Log.e("currentState", newState.effect::class.java.simpleName) }
             when (val effect = newState.effect) {
                 Effect.RequestPermission -> {
+                    firebaseAnalyticsBundle.putString(FirebaseAnalytics.Param.ITEM_NAME, "request_permission")
                     ActivityCompat.requestPermissions(
                         this,
                         arrayOf(Manifest.permission.ACCESS_COARSE_LOCATION),
@@ -144,11 +128,13 @@ class PrintActivity : AppCompatActivity() {
                 }
                 Effect.ConnectPosAndSubscribe -> {
                     if (POSHandler.getInstance().isConnected) {
+                        firebaseAnalyticsBundle.putString(FirebaseAnalytics.Param.ITEM_NAME, "pos_connected")
                         textView.text = "Pos jau prijungtas, tikrinami duomenys..."
                         Handler().postDelayed({
                             machine.transition(Event.PosConnected)
                         }, PRINTER_WAIT_DELAY_DEFAULT)
                     } else {
+                        firebaseAnalyticsBundle.putString(FirebaseAnalytics.Param.ITEM_NAME, "pos_need_connection")
                         subscribePosReady()
                     }
                     POSHandler.getInstance().setPOSInfoListener(object : POSInfoListener {
@@ -158,6 +144,9 @@ class PrintActivity : AppCompatActivity() {
                             status: Int,
                             description: String?
                         ) {
+                            runOnUiThread {
+                                firebaseAnalyticsBundle.putString(FirebaseAnalytics.Param.ITEM_NAME, "status $status")
+                            }
                             Log.e("onPOSInfoReceived", "command $command")
                             Log.e("onPOSInfoReceived", "status $status")
                             Log.e("onPOSInfoReceived", "description $description")
@@ -269,6 +258,7 @@ class PrintActivity : AppCompatActivity() {
                     } ?: machine.transition(Event.ErrorHappened("Duomenys nepasieke aplikacijos!"))
                 }
                 is Effect.ThrowErrorMessageAndClose -> {
+                    firebaseAnalyticsBundle.putString(FirebaseAnalytics.Param.CONTENT, "error ${effect.message}")
                     textView.text = effect.message
                     Handler().postDelayed({
                         runOnUiThread {
@@ -321,7 +311,7 @@ class PrintActivity : AppCompatActivity() {
                     val requestBody = jsonBody.toString()
                     sendDataToServer(
                         requestBody = requestBody,
-                        endpointLink = ERROR_LINK_STAGE,
+                        endpointLink = getString(R.string.fallback_error_link),
                         isFalbackCall = true
                     )
                     machine.transition(Event.EffectHandled)
@@ -333,6 +323,7 @@ class PrintActivity : AppCompatActivity() {
     private fun subscribePosReady() {
         POSHandler.getInstance().connectDevice(this)
         POSHandler.getInstance().setPOSReadyListener {
+            firebaseAnalyticsBundle.putString(FirebaseAnalytics.Param.CONTENT, "pos ready")
             textView.text = "Tikrinami duomenys..."
             Handler().postDelayed({
                 machine.transition(Event.PosConnected)
@@ -341,6 +332,7 @@ class PrintActivity : AppCompatActivity() {
     }
 
     private fun enableRetryButton() {
+        firebaseAnalyticsBundle.putString(FirebaseAnalytics.Param.CONTENT, "retry button enabled")
         retry.visibility = View.VISIBLE
         retry.isEnabled = true
         retry.setOnClickListener {

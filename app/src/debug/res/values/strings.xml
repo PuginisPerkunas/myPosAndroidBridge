@@ -1,0 +1,4 @@
+<resources>
+    <string name="app_name">MyPos_MVI-STAGING</string>
+    <string name="fallback_error_link">"https://express-stag.artme.lt/pos-error"</string>
+</resources>

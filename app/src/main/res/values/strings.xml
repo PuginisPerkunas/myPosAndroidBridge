@@ -6,4 +6,5 @@
     <string name="permission_granted_message">Permission granted</string>
     <string name="connected_message">CONNECTED</string>
     <string name="status_connecting">Jungiamasi...</string>
+    <string name="fallback_error_link">"https://express-stag.artme.lt/pos-error"</string>
 </resources>
