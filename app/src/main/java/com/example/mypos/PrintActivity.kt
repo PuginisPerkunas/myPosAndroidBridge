@@ -66,6 +66,7 @@ class PrintActivity : AppCompatActivity() {
         intentFilter.addAction(BluetoothDevice.ACTION_ACL_DISCONNECT_REQUESTED)
         intentFilter.addAction(BluetoothDevice.ACTION_ACL_DISCONNECTED)
         subscribeMachine()
+        version_name.text = "Version: ${BuildConfig.VERSION_NAME}"
     }
 
     override fun onResume() {
