@@ -16,7 +16,7 @@ data class PrintState(
             is Event.ErrorHappened -> copy(effect = Effect.ThrowErrorMessageAndClose(event.message))
             is Event.DataCollected -> {
                 if (!event.endpointLink.isNullOrEmpty()) {
-                    if (event.dataList.isNotEmpty()) {
+                    //if (event.dataList.isNotEmpty()) {
                         if (!event.cardPayment) {
                             copy(
                                 effect = Effect.PrintIncomeReceipt,
@@ -36,7 +36,7 @@ data class PrintState(
                                 )
                             } else copy(effect = Effect.ThrowErrorMessageAndClose("Kaina negali buti 0 atsiskaitant kortele!"))
                         }
-                    } else copy(effect = Effect.ThrowErrorMessageAndClose("Produktu sarasas tuscias!"))
+                  //  } else copy(effect = Effect.ThrowErrorMessageAndClose("Produktu sarasas tuscias!"))
                 } else copy(effect = Effect.ThrowErrorMessageAndClose("Baigties nuoroda nebuvo gauta!"))
             }
             Event.TransactionCompleted -> copy(effect = Effect.PrintIncomeReceipt)

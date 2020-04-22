@@ -17,17 +17,19 @@ import com.android.volley.Response
 import com.android.volley.VolleyLog
 import com.android.volley.toolbox.StringRequest
 import com.android.volley.toolbox.Volley
-import com.google.firebase.analytics.FirebaseAnalytics
 import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
 import com.mypos.slavesdk.*
+import io.sentry.core.Sentry
+import io.sentry.core.SentryLevel
 import kotlinx.android.synthetic.main.activity_print.*
 import org.json.JSONObject
 import java.io.UnsupportedEncodingException
+import java.lang.Exception
 
 private const val FIRST_PRINT_DELAY_DEFAULT = 1000L
-private const val PRINTER_WAIT_DELAY_DEFAULT = 5000L
-private const val PRINTER_WAIT_DELAY_LONG = 10000L
+private const val PRINTER_WAIT_DELAY_DEFAULT = 4000L
+private const val PRINTER_WAIT_DELAY_LONG = 9000L
 private const val BACK_BUTTON_DELAY = 120000L
 
 class PrintActivity : AppCompatActivity() {
@@ -49,16 +51,11 @@ class PrintActivity : AppCompatActivity() {
         )
     }
 
-    private lateinit var firebaseAnalytics: FirebaseAnalytics
-    private val firebaseAnalyticsBundle = Bundle()
-
     private val intentFilter = IntentFilter()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_print)
-        firebaseAnalytics = FirebaseAnalytics.getInstance(this)
-        firebaseAnalyticsBundle.putString(FirebaseAnalytics.Param.ITEM_NAME, getString(R.string.app_name))
         POSHandler.setApplicationContext(this)
         POSHandler.setLanguage(Language.LITHUANIAN)
         VolleyLog.DEBUG = true
@@ -76,13 +73,9 @@ class PrintActivity : AppCompatActivity() {
             machine.transition(Event.PosConnectionNeeded)
         } else {
             //Need permission
+            Sentry.captureMessage("PermissionRequestNeeded", SentryLevel.INFO)
             machine.transition(Event.PermissionRequestNeeded)
         }
-    }
-
-    override fun onPause() {
-        firebaseAnalytics.logEvent(FirebaseAnalytics.Event.SELECT_CONTENT, firebaseAnalyticsBundle)
-        super.onPause()
     }
 
     override fun onRequestPermissionsResult(
@@ -90,7 +83,6 @@ class PrintActivity : AppCompatActivity() {
         permissions: Array<out String>,
         grantResults: IntArray
     ) {
-        firebaseAnalyticsBundle.putString(FirebaseAnalytics.Param.ITEM_NAME, "permission_check")
         if (requestCode == Constants.MY_PERMISSIONS_REQUEST_LOCATION) {
             if (grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
                 //Permission ok
@@ -105,7 +97,7 @@ class PrintActivity : AppCompatActivity() {
 
     override fun onBackPressed() {
         //on click closes app after 2 min
-        firebaseAnalyticsBundle.putString(FirebaseAnalytics.Param.ITEM_NAME, "back_press")
+        Sentry.captureMessage("onBackPressed", SentryLevel.INFO)
         backHandler.removeCallbacks(backRunnable)
         backHandler.postDelayed(
             backRunnable,
@@ -114,12 +106,10 @@ class PrintActivity : AppCompatActivity() {
     }
 
     private fun subscribeMachine() {
-        firebaseAnalyticsBundle.putString(FirebaseAnalytics.Param.ITEM_NAME, "machine_subscribe")
         machine.subscribe { _, newState ->
             newState.effect?.let { Log.e("currentState", newState.effect::class.java.simpleName) }
             when (val effect = newState.effect) {
                 Effect.RequestPermission -> {
-                    firebaseAnalyticsBundle.putString(FirebaseAnalytics.Param.ITEM_NAME, "request_permission")
                     ActivityCompat.requestPermissions(
                         this,
                         arrayOf(Manifest.permission.ACCESS_COARSE_LOCATION),
@@ -129,13 +119,11 @@ class PrintActivity : AppCompatActivity() {
                 }
                 Effect.ConnectPosAndSubscribe -> {
                     if (POSHandler.getInstance().isConnected) {
-                        firebaseAnalyticsBundle.putString(FirebaseAnalytics.Param.ITEM_NAME, "pos_connected")
                         textView.text = "Pos jau prijungtas, tikrinami duomenys..."
                         Handler().postDelayed({
                             machine.transition(Event.PosConnected)
                         }, PRINTER_WAIT_DELAY_DEFAULT)
                     } else {
-                        firebaseAnalyticsBundle.putString(FirebaseAnalytics.Param.ITEM_NAME, "pos_need_connection")
                         subscribePosReady()
                     }
                     POSHandler.getInstance().setPOSInfoListener(object : POSInfoListener {
@@ -145,9 +133,6 @@ class PrintActivity : AppCompatActivity() {
                             status: Int,
                             description: String?
                         ) {
-                            runOnUiThread {
-                                firebaseAnalyticsBundle.putString(FirebaseAnalytics.Param.ITEM_NAME, "status $status")
-                            }
                             Log.e("onPOSInfoReceived", "command $command")
                             Log.e("onPOSInfoReceived", "status $status")
                             Log.e("onPOSInfoReceived", "description $description")
@@ -191,6 +176,7 @@ class PrintActivity : AppCompatActivity() {
                                             textView.text = "Netinkamas kodas!"
                                             enableRetryButton()
                                             machine.transition(Event.EffectHandled)
+                                            Sentry.captureMessage("POS_STATUS_INVALID_PIN", SentryLevel.INFO)
                                         }
                                     }
                                 }
@@ -204,6 +190,7 @@ class PrintActivity : AppCompatActivity() {
                                     runOnUiThread {
                                         textView.text = "Apdorojama mokejimo informacija..."
                                         machine.transition(Event.EffectHandled)
+                                        Sentry.captureMessage("POS_STATUS_PROCESSING", SentryLevel.INFO)
                                     }
                                 }
                                 POSHandler.POS_STATUS_SUCCESS_PURCHASE -> {
@@ -217,6 +204,7 @@ class PrintActivity : AppCompatActivity() {
                                                 machine.transition(Event.TransactionCompleted)
                                             }, PRINTER_WAIT_DELAY_LONG)
                                         }
+                                        Sentry.captureMessage("POS_STATUS_SUCCESS_PURCHASE", SentryLevel.INFO)
                                     }
                                 }
                                 POSHandler.POS_STATUS_SUCCESS -> {
@@ -227,6 +215,8 @@ class PrintActivity : AppCompatActivity() {
                                 }
                                 else -> {
                                     runOnUiThread {
+                                        val exception = Exception("${description ?: "POS ERROR, CODE: "} $status")
+                                        Sentry.captureException(exception)
                                         machine.transition(Event.ErrorCallRequested(status.toString()))
                                     }
                                 }
@@ -238,29 +228,32 @@ class PrintActivity : AppCompatActivity() {
                 }
                 Effect.CollectIncomeData -> {
                     Log.e("incomingDataRaw", intent.toUri(Intent.URI_INTENT_SCHEME))
-                    intent.extras?.getString(Constants.RECEIPT_DATA)?.let { dataJson ->
-                        val dataList: List<Ticket> = Gson().fromJson(dataJson, dataType)
-                        val isCardPayment = intent.getBooleanExtra(Constants.CARD_PAYMENT, false)
-                        val endpointLink = intent.getStringExtra(Constants.ENDPOINT)
-                        val amount = intent.getStringExtra(Constants.AMOUNT)
-                        // Pass data for machine to continue
-                        Log.e("loger", "dataJson $dataJson")
-                        Log.e("loger", "isCardPayment $isCardPayment")
-                        Log.e("loger", "endpointLink $endpointLink")
-                        Log.e("loger", "amount $amount")
-                        machine.transition(
-                            Event.DataCollected(
-                                dataList,
-                                isCardPayment,
-                                endpointLink,
-                                amount
-                            )
+                    Sentry.captureMessage("CollectIncomeData", SentryLevel.INFO)
+                    val dataList: List<Ticket> =  intent.extras?.getString(Constants.RECEIPT_DATA)?.let { dataJson ->
+                        Gson().fromJson<List<Ticket>>(dataJson, dataType)
+                    } ?: listOf(Ticket(listOf(DataItem(ReceiptData.Align.LEFT, ReceiptData.FontSize.SINGLE, " "))))
+                    val isCardPayment = intent.getBooleanExtra(Constants.CARD_PAYMENT, false)
+                    val endpointLink = intent.getStringExtra(Constants.ENDPOINT)
+                    val amount = intent.getStringExtra(Constants.AMOUNT)
+                    // Pass data for machine to continue
+                    Log.e("loger", "isCardPayment $isCardPayment")
+                    Log.e("loger", "endpointLink $endpointLink")
+                    Log.e("loger", "amount $amount")
+                    Sentry.captureMessage("isCardPayment $isCardPayment", SentryLevel.INFO)
+                    Sentry.captureMessage("endpointLink $endpointLink", SentryLevel.INFO)
+                    Sentry.captureMessage("amount $amount", SentryLevel.INFO)
+                    machine.transition(
+                        Event.DataCollected(
+                            dataList,
+                            isCardPayment,
+                            endpointLink,
+                            amount
                         )
-                    } ?: machine.transition(Event.ErrorHappened("Duomenys nepasieke aplikacijos!"))
+                    )
                 }
                 is Effect.ThrowErrorMessageAndClose -> {
-                    firebaseAnalyticsBundle.putString(FirebaseAnalytics.Param.CONTENT, "error ${effect.message}")
                     textView.text = effect.message
+                    Sentry.captureMessage(effect.message, SentryLevel.ERROR)
                     Handler().postDelayed({
                         runOnUiThread {
                             this.finish()
@@ -270,6 +263,7 @@ class PrintActivity : AppCompatActivity() {
                 }
                 Effect.StartCardPayment -> {
                     Log.e("amountBeforeCardPayment", newState.amount)
+                    Sentry.captureMessage("StartCardPayment", SentryLevel.INFO)
                     POSHandler.getInstance().purchase(
                         newState.amount,
                         "999999999",
@@ -279,6 +273,7 @@ class PrintActivity : AppCompatActivity() {
                 }
                 Effect.PrintIncomeReceipt -> {
                     textView.text = "Spauzdinama..."
+                    Sentry.captureMessage("PrintIncomeReceipt", SentryLevel.INFO)
                     Handler().postDelayed({
                         val lastIndexInDataList = newState.dataList.lastIndex
                         newState.dataList.mapIndexed { index, ticket ->
@@ -322,9 +317,9 @@ class PrintActivity : AppCompatActivity() {
     }
 
     private fun subscribePosReady() {
+        Sentry.captureMessage("ConnectPos", SentryLevel.INFO)
         POSHandler.getInstance().connectDevice(this)
         POSHandler.getInstance().setPOSReadyListener {
-            firebaseAnalyticsBundle.putString(FirebaseAnalytics.Param.CONTENT, "pos ready")
             textView.text = "Tikrinami duomenys..."
             Handler().postDelayed({
                 machine.transition(Event.PosConnected)
@@ -333,7 +328,6 @@ class PrintActivity : AppCompatActivity() {
     }
 
     private fun enableRetryButton() {
-        firebaseAnalyticsBundle.putString(FirebaseAnalytics.Param.CONTENT, "retry button enabled")
         retry.visibility = View.VISIBLE
         retry.isEnabled = true
         retry.setOnClickListener {
@@ -388,20 +382,27 @@ class PrintActivity : AppCompatActivity() {
         endpointLink: String,
         isFalbackCall: Boolean = false
     ) {
+        Sentry.captureMessage("EL: $endpointLink")
         val postRequest = object : StringRequest(
             Method.POST, endpointLink,
             Response.Listener { response ->
                 Log.d("Response", response)
                 //this line not close app, but comes back to previous screen
                 machine.transition(event = Event.EffectHandled)
+                Sentry.captureMessage("Success, finishing", SentryLevel.INFO)
                 this.moveTaskToBack(true)
             },
             Response.ErrorListener {
                 // error
+                it?.let {volError ->
+                    Sentry.captureException(volError)
+                    Sentry.addBreadcrumb(volError.localizedMessage ?: "")
+                    Sentry.addBreadcrumb(volError.message ?: "")
+                    Sentry.addBreadcrumb(volError.networkResponse?.statusCode.toString() + "status code")
+                } ?: Sentry.captureMessage("volleyError null")
                 if (!isFalbackCall) {
-                    it.networkResponse.statusCode
-                    textView.text = it.localizedMessage ?: "Klaida susijusi su serveriu..."
-                    machine.transition(Event.ErrorCallRequested(it.networkResponse.statusCode.toString()))
+                    textView.text = it?.localizedMessage ?: "Klaida susijusi su serveriu..."
+                    machine.transition(Event.ErrorCallRequested("ErrorCall:" + it?.networkResponse?.statusCode.toString()))
                 } else finish()
             }
         ) {
@@ -409,6 +410,7 @@ class PrintActivity : AppCompatActivity() {
                 return try {
                     requestBody.toByteArray()
                 } catch (e: UnsupportedEncodingException) {
+                    Sentry.captureException(e)
                     null
                 }
             }

@@ -17,6 +17,11 @@
             android:theme="@style/AppTheme"
             android:usesCleartextTraffic="true"
             tools:ignore="GoogleAppIndexingWarning">
+
+        <meta-data
+                android:name="io.sentry.dsn"
+                android:value="https://f9c18e41591c4718986b931d3f9bfaa4@o359951.ingest.sentry.io/5202889" />
+
         <activity
                 android:name=".PrintActivity"
                 android:configChanges="orientation"
