@@ -30,7 +30,7 @@ import java.io.UnsupportedEncodingException
 
 class PrintingActivity : AppCompatActivity() {
 
-    private var printingLastItem = false
+   /* private var printingLastItem = false
     val requestQueue: RequestQueue by lazy {
         Volley.newRequestQueue(this)
     }
@@ -40,15 +40,15 @@ class PrintingActivity : AppCompatActivity() {
 
     override fun onBackPressed() {
 
-    }
+    }*/
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_printing)
-        POSHandler.setApplicationContext(this)
-        POSHandler.setLanguage(Language.LITHUANIAN)
+       // POSHandler.setApplicationContext(this)
+        //POSHandler.setLanguage(Language.LITHUANIAN)
         //POSHandler.setLanguage()
-        VolleyLog.DEBUG = true
+       /* VolleyLog.DEBUG = true
         if (checkCoarsePermission()) {
             setObservers()
             if (intent.extras != null) {
@@ -80,10 +80,10 @@ class PrintingActivity : AppCompatActivity() {
         tvStatuses.setOnLongClickListener {
             initFackePrint(getTestBundle())
             true
-        }
+        }*/
         // testUri()
     }
-
+/*
     private fun initFackePrint(intent: Bundle) {
         val ticketJson = intent.getString(Constants.RECEIPT_DATA)
         tvStatuses.text = ticketJson
@@ -558,5 +558,5 @@ class PrintingActivity : AppCompatActivity() {
 //        listOfTestt.add(ticketThree)
 
         return listOfTestt
-    }
+    }*/
 }

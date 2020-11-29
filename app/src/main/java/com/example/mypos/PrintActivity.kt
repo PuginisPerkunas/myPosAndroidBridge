@@ -131,7 +131,8 @@ class PrintActivity : AppCompatActivity() {
                         override fun onPOSInfoReceived(
                             command: Int,
                             status: Int,
-                            description: String?
+                            description: String,
+                            extra: Bundle?
                         ) {
                             Log.e("onPOSInfoReceived", "command $command")
                             Log.e("onPOSInfoReceived", "status $status")
