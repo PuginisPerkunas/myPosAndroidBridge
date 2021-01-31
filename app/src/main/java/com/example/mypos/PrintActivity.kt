@@ -32,6 +32,7 @@ private const val PRINTER_WAIT_DELAY_DEFAULT = 4000L
 private const val PRINTER_WAIT_DELAY_LONG = 9000L
 private const val BACK_BUTTON_DELAY = 120000L
 
+//test
 class PrintActivity : AppCompatActivity() {
 
     private var printingLastReciept: Boolean = false
